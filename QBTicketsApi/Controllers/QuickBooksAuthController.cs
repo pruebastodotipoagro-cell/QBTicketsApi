@@ -4,6 +4,7 @@ using QBTicketsApi.Models;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace QBTicketsApi.Controllers
 {
@@ -15,10 +16,7 @@ namespace QBTicketsApi.Controllers
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IConfiguration _config;
 
-        public QuickBooksAuthController(
-            AppDbContext db,
-            IHttpClientFactory httpClientFactory,
-            IConfiguration config)
+        public QuickBooksAuthController(AppDbContext db, IHttpClientFactory httpClientFactory, IConfiguration config)
         {
             _db = db;
             _httpClientFactory = httpClientFactory;
@@ -28,8 +26,8 @@ namespace QBTicketsApi.Controllers
         [HttpGet("quickbooks")]
         public IActionResult ConnectQuickBooks()
         {
-            string clientId = _config["QuickBooks:ClientId"];
-            string redirectUri = _config["QuickBooks:RedirectUri"];
+            string clientId = (_config["QuickBooks:ClientId"] ?? "").Trim();
+            string redirectUri = (_config["QuickBooks:RedirectUri"] ?? "").Trim();
 
             string scope = "com.intuit.quickbooks.accounting";
             string state = Guid.NewGuid().ToString("N");
@@ -46,33 +44,26 @@ namespace QBTicketsApi.Controllers
         }
 
         [HttpGet("callback")]
-        public async Task<IActionResult> Callback(
-            [FromQuery] string code,
-            [FromQuery] string realmId,
-            [FromQuery] string state)
+        public async Task<IActionResult> Callback([FromQuery] string code, [FromQuery] string realmId, [FromQuery] string state)
         {
-            if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(realmId))
-            {
-                return BadRequest("QuickBooks no devolvió code o realmId.");
-            }
+            string clientId = (_config["QuickBooks:ClientId"] ?? "").Trim();
+            string clientSecret = (_config["QuickBooks:ClientSecret"] ?? "").Trim();
+            string redirectUri = (_config["QuickBooks:RedirectUri"] ?? "").Trim();
 
-            string clientId = _config["QuickBooks:ClientId"];
-            string clientSecret = _config["QuickBooks:ClientSecret"];
-            string redirectUri = _config["QuickBooks:RedirectUri"];
+            if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(realmId))
+                return BadRequest("QuickBooks no devolvió code o realmId.");
 
             var client = _httpClientFactory.CreateClient();
 
-            string basicAuth = Convert.ToBase64String(
-                Encoding.UTF8.GetBytes($"{clientId}:{clientSecret}")
-            );
+            string basicAuth = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{clientId}:{clientSecret}"));
 
-            client.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Basic", basicAuth);
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", basicAuth);
+            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
             var form = new Dictionary<string, string>
             {
                 { "grant_type", "authorization_code" },
-                { "code", code },
+                { "code", code.Trim() },
                 { "redirect_uri", redirectUri }
             };
 
@@ -84,22 +75,14 @@ namespace QBTicketsApi.Controllers
             string json = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
-            {
                 return BadRequest("Error conectando QuickBooks: " + json);
-            }
 
-            var token = JsonSerializer.Deserialize<QuickBooksTokenResponse>(
-                json,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-            );
+            var token = JsonSerializer.Deserialize<QuickBooksTokenResponse>(json);
 
-            if (token == null)
-            {
-                return BadRequest("Respuesta inválida de QuickBooks.");
-            }
+            if (token == null || string.IsNullOrWhiteSpace(token.AccessToken))
+                return BadRequest("Respuesta inválida de QuickBooks: " + json);
 
-            var existing = _db.QuickBooksConnections
-                .FirstOrDefault(x => x.RealmId == realmId);
+            var existing = _db.QuickBooksConnections.FirstOrDefault(x => x.RealmId == realmId);
 
             if (existing == null)
             {
@@ -121,17 +104,21 @@ namespace QBTicketsApi.Controllers
 
             await _db.SaveChangesAsync();
 
-            return Content(
-                "QuickBooks conectado correctamente al nuevo sistema QBTicketsApi.",
-                "text/plain"
-            );
+            return Content("QuickBooks conectado correctamente al nuevo sistema QBTicketsApi.", "text/plain");
         }
 
         private class QuickBooksTokenResponse
         {
+            [JsonPropertyName("access_token")]
             public string AccessToken { get; set; }
+
+            [JsonPropertyName("refresh_token")]
             public string RefreshToken { get; set; }
+
+            [JsonPropertyName("expires_in")]
             public int ExpiresIn { get; set; }
+
+            [JsonPropertyName("x_refresh_token_expires_in")]
             public int RefreshTokenExpiresIn { get; set; }
         }
     }
