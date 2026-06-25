@@ -14,7 +14,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddHttpClient();
-
+builder.Services.AddScoped<QBTicketsApi.Services.QuickBooksService>();
 var app = builder.Build();
 
 app.UseSwagger();
