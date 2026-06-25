@@ -15,6 +15,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<QBTicketsApi.Services.QuickBooksService>();
+builder.Services.AddHostedService<QBTicketsApi.Services.QuickBooksTokenRefreshWorker>();
 var app = builder.Build();
 
 app.UseSwagger();
