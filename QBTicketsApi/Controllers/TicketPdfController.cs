@@ -1,0 +1,40 @@
+﻿using Microsoft.AspNetCore.Mvc;
+using QBTicketsApi.Services;
+
+namespace QBTicketsApi.Controllers
+{
+    [ApiController]
+    [Route("api/invoices")]
+    public class TicketPdfController : ControllerBase
+    {
+        private readonly QuickBooksService _quickBooksService;
+        private readonly TicketPdfService _ticketPdfService;
+        private readonly FelService _felService;
+
+        public TicketPdfController(
+            QuickBooksService quickBooksService,
+            TicketPdfService ticketPdfService,
+            FelService felService)
+
+        {
+            _quickBooksService = quickBooksService;
+            _ticketPdfService = ticketPdfService;
+            _felService = felService;
+        }
+
+        [HttpGet("{id}/pdf")]
+        public async Task<IActionResult> GetTicketPdf(string id)
+        {
+            var json = await _quickBooksService.GetSalesReceiptById(id);
+
+            if (string.IsNullOrWhiteSpace(json))
+                return NotFound("No se encontró el recibo.");
+
+            var fel = _felService.CertifyMock(id, id);
+
+            var pdf = _ticketPdfService.GenerateSalesReceiptPdf(json, fel);
+
+            return File(pdf, "application/pdf", $"ticket-{id}.pdf");
+        }
+    }
+}

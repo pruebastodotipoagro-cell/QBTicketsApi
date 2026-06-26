@@ -16,5 +16,12 @@
         public string Status { get; set; } = "pending";
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+        public string FelSerie { get; set; } = "";
+        public string FelDteNumber { get; set; } = "";
+        public string FelAuthorizationNumber { get; set; } = "";
+        public DateTime? FelCertificationDate { get; set; }
+        public string FelQr { get; set; } = "";
+        public bool IsCertified { get; set; } = false;
     }
 }
