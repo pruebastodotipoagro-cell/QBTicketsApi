@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    container_name: qbtickets_api
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=qbticketsdb;Username=postgres;Password=postgres123
+      QuickBooks__ClientId: ABAqHFy2ZImO9zl9UnGLeXwUspmMN4iiWRIyqG86ScZta1aqJC
+      QuickBooks__ClientSecret: ZtT80VABIrFlx3rakcLDAsJoAGayooFEExOgfOVC
+      QuickBooks__RedirectUri: http://localhost:8080/auth/callback
+    depends_on:
+      - postgres
+    restart: always
+
+  postgres:
+    image: postgres:16
+    container_name: qbtickets_postgres
+    environment:
+      POSTGRES_DB: qbticketsdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: qbtickets_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@agrocultivo.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    restart: always
+
+volumes:
+  postgres_data:
