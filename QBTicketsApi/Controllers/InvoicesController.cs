@@ -27,5 +27,12 @@ namespace QBTicketsApi.Controllers
             var result = await _quickBooksService.GetSalesReceipts();
             return Content(result, "application/json");
         }
+
+        [HttpGet("credit-invoices")]
+        public async Task<IActionResult> GetCreditInvoices()
+        {
+            var result = await _quickBooksService.GetCreditInvoices();
+            return Content(result, "application/json");
+        }
     }
 }

@@ -106,6 +106,32 @@ namespace QBTicketsApi.Services
             return await response.Content.ReadAsStringAsync();
         }
 
+        public async Task<string> GetCreditInvoices()
+        {
+            var connection = _db.QuickBooksConnections.FirstOrDefault();
+            if (connection == null) return "No hay conexión QuickBooks.";
+
+            if (connection.AccessTokenExpiresAt <= DateTime.UtcNow.AddMinutes(5))
+                await RefreshToken();
+
+            connection = _db.QuickBooksConnections.FirstOrDefault();
+
+            var client = _httpClientFactory.CreateClient();
+
+            client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", connection.AccessToken);
+
+            client.DefaultRequestHeaders.Accept.Add(
+                new MediaTypeWithQualityHeaderValue("application/json")
+            );
+
+            string query = Uri.EscapeDataString("SELECT * FROM Invoice MAXRESULTS 20");
+            string url = $"https://quickbooks.api.intuit.com/v3/company/{connection.RealmId}/query?query={query}";
+
+            var response = await client.GetAsync(url);
+
+            return await response.Content.ReadAsStringAsync();
+        }
         private class QuickBooksTokenResponse
         {
             [JsonPropertyName("access_token")]
