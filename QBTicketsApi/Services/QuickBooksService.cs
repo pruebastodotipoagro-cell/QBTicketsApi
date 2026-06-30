@@ -3,6 +3,8 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using QBTicketsApi.DTOs;
+using System.Text.Json;
 
 namespace QBTicketsApi.Services
 {
@@ -132,6 +134,58 @@ namespace QBTicketsApi.Services
 
             return await response.Content.ReadAsStringAsync();
         }
+
+        public async Task<List<InvoiceResponseDto>> GetCreditInvoicesList()
+        {
+            var json = await GetCreditInvoices();
+
+            var result = new List<InvoiceResponseDto>();
+
+            using var doc = JsonDocument.Parse(json);
+
+            if (!doc.RootElement.TryGetProperty("QueryResponse", out var queryResponse))
+                return result;
+
+            if (!queryResponse.TryGetProperty("Invoice", out var invoices))
+                return result;
+
+            foreach (var inv in invoices.EnumerateArray())
+            {
+                string id = inv.TryGetProperty("Id", out var idValue) ? idValue.GetString() ?? "" : "";
+                string docNumber = inv.TryGetProperty("DocNumber", out var docValue) ? docValue.GetString() ?? "" : id;
+
+                string customerName = "Consumidor Final";
+                if (inv.TryGetProperty("CustomerRef", out var customerRef))
+                    customerName = customerRef.TryGetProperty("name", out var nameValue) ? nameValue.GetString() ?? customerName : customerName;
+
+                DateTime issueDate = DateTime.UtcNow;
+                if (inv.TryGetProperty("TxnDate", out var dateValue))
+                    DateTime.TryParse(dateValue.GetString(), out issueDate);
+
+                decimal total = 0;
+                if (inv.TryGetProperty("TotalAmt", out var totalValue))
+                    totalValue.TryGetDecimal(out total);
+
+                decimal balance = 0;
+                if (inv.TryGetProperty("Balance", out var balanceValue))
+                    balanceValue.TryGetDecimal(out balance);
+
+                result.Add(new InvoiceResponseDto
+                {
+                    QbInvoiceId = id,
+                    InvoiceNumber = docNumber,
+                    CustomerName = customerName,
+                    CustomerNit = "CF",
+                    IssueDate = issueDate,
+                    Total = total,
+                    Balance = balance,
+                    SaleType = "credito"
+                });
+            }
+
+            return result;
+        }
+
         private class QuickBooksTokenResponse
         {
             [JsonPropertyName("access_token")]
