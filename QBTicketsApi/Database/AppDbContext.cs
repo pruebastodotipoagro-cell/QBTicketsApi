@@ -13,5 +13,6 @@ namespace QBTicketsApi.Database
         public DbSet<QuickBooksConnection> QuickBooksConnections { get; set; }
         public DbSet<User> Users { get; set; }
         public DbSet<Invoice> Invoices { get; set; }
+        public DbSet<Customer> Customers { get; set; }
     }
 }

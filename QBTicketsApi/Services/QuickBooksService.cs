@@ -13,12 +13,16 @@ namespace QBTicketsApi.Services
         private readonly AppDbContext _db;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IConfiguration _config;
+        private readonly CustomerLookupService _customerLookupService;
 
-        public QuickBooksService(AppDbContext db, IHttpClientFactory httpClientFactory, IConfiguration config)
+
+        public QuickBooksService(AppDbContext db, IHttpClientFactory httpClientFactory, IConfiguration config, CustomerLookupService customerLookupService)
         {
             _db = db;
             _httpClientFactory = httpClientFactory;
             _config = config;
+            _customerLookupService = customerLookupService;
+
         }
 
         public async Task<string> GetSalesReceipts()
@@ -175,7 +179,7 @@ namespace QBTicketsApi.Services
                     QbInvoiceId = id,
                     InvoiceNumber = docNumber,
                     CustomerName = customerName,
-                    CustomerNit = "CF",
+                    CustomerNit = _customerLookupService.GetNit(customerName),
                     IssueDate = issueDate,
                     Total = total,
                     Balance = balance,

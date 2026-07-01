@@ -20,6 +20,8 @@ builder.Services.AddHostedService<QBTicketsApi.Services.QuickBooksTokenRefreshWo
 QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
 builder.Services.AddScoped<QBTicketsApi.Services.TicketPdfService>();
 builder.Services.AddScoped<QBTicketsApi.Services.FelService>();
+builder.Services.AddSingleton<QBTicketsApi.Services.CustomerLookupService>();
+
 var app = builder.Build();
 
 app.UseSwagger();
