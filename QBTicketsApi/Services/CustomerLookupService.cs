@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+﻿using Microsoft.VisualBasic.FileIO;
 
 namespace QBTicketsApi.Services
 {
@@ -13,20 +13,28 @@ namespace QBTicketsApi.Services
             if (!File.Exists(path))
                 return;
 
-            var lines = File.ReadAllLines(path);
+            using var parser = new TextFieldParser(path);
+            parser.TextFieldType = FieldType.Delimited;
+            parser.SetDelimiters(",");
+            parser.HasFieldsEnclosedInQuotes = true;
 
-            foreach (var line in lines.Skip(1))
+            bool isHeader = true;
+
+            while (!parser.EndOfData)
             {
-                if (string.IsNullOrWhiteSpace(line))
+                var fields = parser.ReadFields();
+
+                if (fields == null || fields.Length < 2)
                     continue;
 
-                var parts = line.Split(',');
-
-                if (parts.Length < 2)
+                if (isHeader)
+                {
+                    isHeader = false;
                     continue;
+                }
 
-                var name = Normalize(parts[0]);
-                var nit = parts[1].Trim();
+                var name = Normalize(fields[0]);
+                var nit = fields[1]?.Trim() ?? "CF";
 
                 if (string.IsNullOrWhiteSpace(name))
                     continue;
