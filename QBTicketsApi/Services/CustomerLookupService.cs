@@ -1,4 +1,5 @@
 ﻿using Microsoft.VisualBasic.FileIO;
+using System.IO;
 
 namespace QBTicketsApi.Services
 {
@@ -8,13 +9,28 @@ namespace QBTicketsApi.Services
 
         public CustomerLookupService(IWebHostEnvironment env)
         {
-            var path = Path.Combine(env.ContentRootPath, "Data", "clientes.csv");
+            var path1 = Path.Combine(env.ContentRootPath, "Data", "clientes.csv");
+            var path2 = Path.Combine(AppContext.BaseDirectory, "Data", "clientes.csv");
+
+            Console.WriteLine("ContentRootPath: " + env.ContentRootPath);
+            Console.WriteLine("BaseDirectory: " + AppContext.BaseDirectory);
+            Console.WriteLine("Path1 exists: " + File.Exists(path1));
+            Console.WriteLine("Path2 exists: " + File.Exists(path2));
+
+            var files = Directory.GetFiles(AppContext.BaseDirectory, "*", System.IO.SearchOption.AllDirectories);
+
+            foreach (var file in files)
+            {
+                Console.WriteLine("FILE FOUND: " + file);
+            }
+
+            var path = path1;
+
+            if (!File.Exists(path))
+                path = path2;
 
             if (!File.Exists(path))
                 return;
-            {
-                path = Path.Combine(AppContext.BaseDirectory, "Data", "clientes.csv");
-            }
 
             using var parser = new TextFieldParser(path);
             parser.TextFieldType = FieldType.Delimited;
