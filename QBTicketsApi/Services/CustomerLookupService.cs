@@ -12,6 +12,9 @@ namespace QBTicketsApi.Services
 
             if (!File.Exists(path))
                 return;
+            {
+                path = Path.Combine(AppContext.BaseDirectory, "Data", "clientes.csv");
+            }
 
             using var parser = new TextFieldParser(path);
             parser.TextFieldType = FieldType.Delimited;
