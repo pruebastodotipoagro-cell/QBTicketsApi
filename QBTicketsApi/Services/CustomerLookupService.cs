@@ -1,5 +1,5 @@
 ﻿using Microsoft.VisualBasic.FileIO;
-using System.IO;
+using System.Reflection;
 
 namespace QBTicketsApi.Services
 {
@@ -7,32 +7,31 @@ namespace QBTicketsApi.Services
     {
         private readonly Dictionary<string, string> _customers = new();
 
-        public CustomerLookupService(IWebHostEnvironment env)
+        public CustomerLookupService()
         {
-            var path1 = Path.Combine(env.ContentRootPath, "Data", "clientes.csv");
-            var path2 = Path.Combine(AppContext.BaseDirectory, "Data", "clientes.csv");
+            var assembly = Assembly.GetExecutingAssembly();
 
-            Console.WriteLine("ContentRootPath: " + env.ContentRootPath);
-            Console.WriteLine("BaseDirectory: " + AppContext.BaseDirectory);
-            Console.WriteLine("Path1 exists: " + File.Exists(path1));
-            Console.WriteLine("Path2 exists: " + File.Exists(path2));
+            var resourceName = assembly
+                .GetManifestResourceNames()
+                .FirstOrDefault(x => x.EndsWith("clientes.csv"));
 
-            var files = Directory.GetFiles(AppContext.BaseDirectory, "*", System.IO.SearchOption.AllDirectories);
-
-            foreach (var file in files)
+            if (resourceName == null)
             {
-                Console.WriteLine("FILE FOUND: " + file);
+                Console.WriteLine("clientes.csv NO encontrado como recurso incrustado.");
+                return;
             }
 
-            var path = path1;
+            using var stream = assembly.GetManifestResourceStream(resourceName);
 
-            if (!File.Exists(path))
-                path = path2;
-
-            if (!File.Exists(path))
+            if (stream == null)
+            {
+                Console.WriteLine("No se pudo abrir clientes.csv.");
                 return;
+            }
 
-            using var parser = new TextFieldParser(path);
+            using var reader = new StreamReader(stream);
+            using var parser = new TextFieldParser(reader);
+
             parser.TextFieldType = FieldType.Delimited;
             parser.SetDelimiters(",");
             parser.HasFieldsEnclosedInQuotes = true;
@@ -63,6 +62,8 @@ namespace QBTicketsApi.Services
 
                 _customers[name] = nit;
             }
+
+            Console.WriteLine($"Clientes cargados desde CSV incrustado: {_customers.Count}");
         }
 
         public string GetNit(string customerName)
