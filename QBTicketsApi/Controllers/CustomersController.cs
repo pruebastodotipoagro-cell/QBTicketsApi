@@ -12,7 +12,8 @@ namespace QBTicketsApi.Controllers
         {
             return Ok(new
             {
-                customer = "ALEJANDRO REYES, PEDRO",
+                total = lookup.Count(),
+                sample = lookup.DebugSample(),
                 nit = lookup.GetNit("ALEJANDRO REYES, PEDRO")
             });
         }

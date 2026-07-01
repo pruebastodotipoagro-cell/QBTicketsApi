@@ -56,6 +56,19 @@ namespace QBTicketsApi.Services
             return "CF";
         }
 
+        public int Count()
+        {
+            return _customers.Count;
+        }
+
+        public string DebugSample()
+        {
+            if (_customers.Count == 0)
+                return "VACIO";
+
+            return _customers.Keys.First();
+        }
+
         private static string Normalize(string value)
         {
             return (value ?? "")
