@@ -7,14 +7,21 @@ namespace QBTicketsApi.Controllers
     [Route("api/customers")]
     public class CustomersController : ControllerBase
     {
-        [HttpGet("nit-test")]
-        public IActionResult NitTest([FromServices] CustomerLookupService lookup)
+        private readonly CustomerLookupService _customerLookupService;
+
+        public CustomersController(CustomerLookupService customerLookupService)
         {
+            _customerLookupService = customerLookupService;
+        }
+
+        [HttpGet]
+        public IActionResult GetCustomers()
+        {
+            var customers = _customerLookupService.GetCustomerNames();
+
             return Ok(new
             {
-                total = lookup.Count(),
-                sample = lookup.DebugSample(),
-                nit = lookup.GetNit("ALEJANDRO REYES, PEDRO")
+                customers = customers
             });
         }
     }

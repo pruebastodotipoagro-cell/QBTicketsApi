@@ -75,6 +75,10 @@ namespace QBTicketsApi.Services
 
             return "CF";
         }
+        public List<string> GetCustomerNames()
+        {
+            return _customers.Keys.OrderBy(x => x).ToList();
+        }
 
         public int Count()
         {

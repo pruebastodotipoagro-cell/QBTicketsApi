@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using QBTicketsApi.DTOs;
 using System.Text.Json;
+using QBTicketsApi.DTOs;
 
 namespace QBTicketsApi.Services
 {
@@ -188,6 +189,33 @@ namespace QBTicketsApi.Services
             }
 
             return result;
+        }
+
+        public async Task<List<CreditCustomerSummaryDto>> GetCreditSummaryList()
+        {
+            var invoices = await GetCreditInvoicesList();
+
+            var summary = invoices
+                .Where(x => x.Balance > 0)
+                .GroupBy(x => x.CustomerName)
+                .Select(g =>
+                {
+                    var last = g.OrderByDescending(x => x.IssueDate).First();
+
+                    return new CreditCustomerSummaryDto
+                    {
+                        CustomerName = g.Key,
+                        CustomerNit = _customerLookupService.GetNit(g.Key),
+                        TotalDebt = g.Sum(x => x.Balance),
+                        OpenInvoices = g.Count(),
+                        LastInvoiceId = last.QbInvoiceId,
+                        LastInvoiceNumber = last.InvoiceNumber
+                    };
+                })
+                .OrderBy(x => x.CustomerName)
+                .ToList();
+
+            return summary;
         }
 
         private class QuickBooksTokenResponse
