@@ -27,6 +27,11 @@ namespace QBTicketsApi.Controllers
         {
             var json = await _quickBooksService.GetSalesReceiptById(id);
 
+            if (string.IsNullOrWhiteSpace(json) || !json.Contains("SalesReceipt"))
+            {
+                json = await _quickBooksService.GetInvoiceById(id);
+            }
+
             if (string.IsNullOrWhiteSpace(json))
                 return NotFound("No se encontró el recibo.");
 

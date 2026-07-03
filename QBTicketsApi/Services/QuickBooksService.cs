@@ -218,6 +218,30 @@ namespace QBTicketsApi.Services
             return summary;
         }
 
+        public async Task<string> GetInvoiceById(string id)
+        {
+            var connection = _db.QuickBooksConnections.FirstOrDefault();
+            if (connection == null) return "";
+
+            if (connection.AccessTokenExpiresAt <= DateTime.UtcNow.AddMinutes(5))
+                await RefreshToken();
+
+            connection = _db.QuickBooksConnections.FirstOrDefault();
+
+            var client = _httpClientFactory.CreateClient();
+            client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", connection.AccessToken);
+
+            client.DefaultRequestHeaders.Accept.Add(
+                new MediaTypeWithQualityHeaderValue("application/json")
+            );
+
+            string query = Uri.EscapeDataString($"SELECT * FROM Invoice WHERE Id = '{id}'");
+            string url = $"https://quickbooks.api.intuit.com/v3/company/{connection.RealmId}/query?query={query}";
+
+            var response = await client.GetAsync(url);
+            return await response.Content.ReadAsStringAsync();
+        }
         private class QuickBooksTokenResponse
         {
             [JsonPropertyName("access_token")]

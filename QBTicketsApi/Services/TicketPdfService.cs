@@ -11,13 +11,27 @@ namespace QBTicketsApi.Services
         {
             using var doc = JsonDocument.Parse(json);
 
-            var receipt = doc.RootElement
-                .GetProperty("QueryResponse")
-                .GetProperty("SalesReceipt")[0];
+            var queryResponse = doc.RootElement.GetProperty("QueryResponse");
+
+            JsonElement receipt;
+
+            if (queryResponse.TryGetProperty("SalesReceipt", out var salesReceipts))
+            {
+                receipt = salesReceipts[0];
+            }
+            else if (queryResponse.TryGetProperty("Invoice", out var invoices))
+            {
+                receipt = invoices[0];
+            }
+            else
+            {
+                throw new Exception("QuickBooks no devolvió SalesReceipt ni Invoice.");
+            }
 
             string docNumber = GetString(receipt, "DocNumber", "SIN-NUMERO");
             string date = GetString(receipt, "TxnDate", DateTime.Now.ToString("yyyy-MM-dd"));
             decimal total = GetDecimal(receipt, "TotalAmt");
+            string customerNit = GetString(receipt, "CustomerNit", "CF");
 
             string customer = "Consumidor Final";
             if (receipt.TryGetProperty("CustomerRef", out var customerRef))
@@ -55,7 +69,7 @@ namespace QBTicketsApi.Services
                         col.Item().Text($"Factura No.: #{docNumber}").Bold();
                         col.Item().Text($"Fecha emisión: {date}");
                         col.Item().Text($"Cliente: {customer}");
-                        col.Item().Text("NIT: CF");
+                        col.Item().Text($"NIT: {customerNit}");
 
 
 
