@@ -242,6 +242,7 @@ namespace QBTicketsApi.Services
             var response = await client.GetAsync(url);
             return await response.Content.ReadAsStringAsync();
         }
+
         private class QuickBooksTokenResponse
         {
             [JsonPropertyName("access_token")]

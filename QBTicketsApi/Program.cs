@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using QBTicketsApi.Database;
+using QBTicketsApi.Services;
 using QuestPDF.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -21,6 +22,8 @@ QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
 builder.Services.AddScoped<QBTicketsApi.Services.TicketPdfService>();
 builder.Services.AddScoped<QBTicketsApi.Services.FelService>();
 builder.Services.AddSingleton<QBTicketsApi.Services.CustomerLookupService>();
+builder.Services.AddScoped<MegaprintService>();
+
 
 var app = builder.Build();
 
