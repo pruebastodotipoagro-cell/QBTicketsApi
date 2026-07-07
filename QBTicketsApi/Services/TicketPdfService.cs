@@ -63,7 +63,7 @@ namespace QBTicketsApi.Services
                     {
                         col.Spacing(3);//
 
-                        col.Item().AlignCenter().Text("### PRUEBA DISEÑO NUEVO ###").Bold().FontSize(14);
+                        col.Item().AlignCenter().Text("PRUEBA NUEVO TICKET").Bold().FontSize(14);
 
                         if (File.Exists(logoPath))
                         {

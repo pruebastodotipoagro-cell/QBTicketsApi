@@ -38,6 +38,8 @@ namespace QBTicketsApi.Controllers
             string saleType = json.Contains("SalesReceipt") ? "contado" : "credito";
             var fel = await _felService.CertifyAsync(id, json, saleType);
 
+            Console.WriteLine(">>> GENERANDO PDF NUEVO DESDE TicketPdfController");
+
             var pdf = _ticketPdfService.GenerateSalesReceiptPdf(json, fel);
 
             return File(pdf, "application/pdf", $"ticket-{id}.pdf");
