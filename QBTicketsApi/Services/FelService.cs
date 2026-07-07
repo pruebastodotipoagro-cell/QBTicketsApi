@@ -12,6 +12,7 @@ namespace QBTicketsApi.Services
         public string AuthorizationNumber { get; set; } = "";
         public DateTime CertificationDate { get; set; }
         public string Qr { get; set; } = "";
+        public string CustomerNit { get; set; } = "";
     }
 
     public class FelService
@@ -63,7 +64,8 @@ namespace QBTicketsApi.Services
                     DteNumber = existing.FelDteNumber,
                     AuthorizationNumber = existing.FelAuthorizationNumber,
                     CertificationDate = existing.FelCertificationDate ?? DateTime.UtcNow,
-                    Qr = existing.FelQr
+                    Qr = existing.FelQr,
+                    CustomerNit = existing.CustomerNit
                 };
             }
 
@@ -107,7 +109,8 @@ namespace QBTicketsApi.Services
                 DteNumber = numero,
                 AuthorizationNumber = uuid,
                 CertificationDate = certificationDate,
-                Qr = ""
+                Qr = "",
+                CustomerNit = customerNit
             };
         }
 
