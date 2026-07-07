@@ -12,7 +12,7 @@ namespace QBTicketsApi.Services
             _customerLookupService = customerLookupService;
         }
 
-        public string BuildFactXml(string quickBooksJson)
+        public string BuildFactXml(string quickBooksJson, string? nitOverride = null)
         {
             using var doc = JsonDocument.Parse(quickBooksJson);
             var query = doc.RootElement.GetProperty("QueryResponse");
@@ -35,7 +35,9 @@ namespace QBTicketsApi.Services
             if (qbDoc.TryGetProperty("CustomerRef", out var customerRef))
                 customerName = GetString(customerRef, "name", "Consumidor Final");
 
-            string customerNit = _customerLookupService.GetNit(customerName);
+            string customerNit = !string.IsNullOrWhiteSpace(nitOverride)
+                ? nitOverride
+                : _customerLookupService.GetNit(customerName);
             if (string.IsNullOrWhiteSpace(customerNit)) customerNit = "CF";
 
             decimal montoGravable = Math.Round(total / 1.12m, 6);
@@ -68,7 +70,7 @@ namespace QBTicketsApi.Services
                                     new XAttribute("Tipo", "FACT")
                                 ),
 
-                                                        new XElement(dte + "Emisor",
+                                new XElement(dte + "Emisor",
                                     new XAttribute("AfiliacionIVA", "GEN"),
                                     new XAttribute("CodigoEstablecimiento", "1"),
                                     new XAttribute("CorreoEmisor", ""),
@@ -85,7 +87,7 @@ namespace QBTicketsApi.Services
                                     )
                                 ),
 
-                               new XElement(dte + "Receptor",
+                                new XElement(dte + "Receptor",
                                     new XAttribute("CorreoReceptor", ""),
                                     new XAttribute("IDReceptor", customerNit),
                                     new XAttribute("NombreReceptor", customerName),
@@ -103,10 +105,9 @@ namespace QBTicketsApi.Services
                                     new XElement(dte + "Frase",
                                         // Confirmado por Megaprint (caso #131661): régimen ISR sobre utilidades de actividades lucrativas
                                         new XAttribute("CodigoEscenario", "1"),
-                                        new XAttribute("TipoFrase", "1")       
-                                         )
-                                    ),
-
+                                        new XAttribute("TipoFrase", "1")
+                                    )
+                                ),
 
                                 BuildItems(qbDoc, dte),
 
@@ -124,7 +125,6 @@ namespace QBTicketsApi.Services
                     )
                 )
             );
-            
 
             return xml.ToString(SaveOptions.DisableFormatting);
         }
@@ -214,7 +214,4 @@ namespace QBTicketsApi.Services
             return emision.ToString("yyyy-MM-ddTHH:mm:sszzz");
         }
     }
-
-
-
 }

@@ -15,7 +15,6 @@ namespace QBTicketsApi.Controllers
             QuickBooksService quickBooksService,
             TicketPdfService ticketPdfService,
             FelService felService)
-
         {
             _quickBooksService = quickBooksService;
             _ticketPdfService = ticketPdfService;
@@ -23,7 +22,7 @@ namespace QBTicketsApi.Controllers
         }
 
         [HttpGet("{id}/pdf")]
-        public async Task<IActionResult> GetTicketPdf(string id)
+        public async Task<IActionResult> GetTicketPdf(string id, [FromQuery] string? nit = null)
         {
             var json = await _quickBooksService.GetSalesReceiptById(id);
 
@@ -36,11 +35,9 @@ namespace QBTicketsApi.Controllers
                 return NotFound("No se encontró el recibo.");
 
             string saleType = json.Contains("SalesReceipt") ? "contado" : "credito";
-            var fel = await _felService.CertifyAsync(id, json, saleType);
+            var fel = await _felService.CertifyAsync(id, json, saleType, nit);
 
-            Console.WriteLine(">>> GENERANDO PDF NUEVO DESDE TicketPdfController");
-
-            var pdf = _ticketPdfService.GenerateSalesReceiptPdf(json, fel);
+            var pdf = _ticketPdfService.GenerateSalesReceiptPdf(json, fel, saleType);
 
             return File(pdf, "application/pdf", $"ticket-{id}.pdf");
         }
