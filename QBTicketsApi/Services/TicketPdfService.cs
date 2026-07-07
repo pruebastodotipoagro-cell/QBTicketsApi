@@ -25,7 +25,7 @@ namespace QBTicketsApi.Services
 
             string rawDate = GetString(receipt, "TxnDate", DateTime.Now.ToString("yyyy-MM-dd"));
             string date = DateTime.TryParse(rawDate, out var parsedTxnDate)
-                ? parsedTxnDate.ToString("dd/MM/yyyy")
+                ? parsedTxnDate.ToString("dd/MM/yyyy HH:mm")
                 : rawDate;
 
             decimal total = GetDecimal(receipt, "TotalAmt");
@@ -61,9 +61,7 @@ namespace QBTicketsApi.Services
 
                     page.Content().Column(col =>
                     {
-                        col.Spacing(3);//
-
-                        col.Item().AlignCenter().Text("PRUEBA NUEVO TICKET").Bold().FontSize(14);
+                        col.Spacing(3);
 
                         if (File.Exists(logoPath))
                         {
@@ -77,14 +75,14 @@ namespace QBTicketsApi.Services
                         col.Item().AlignCenter().Text("INNOVACIONES AGRÍCOLAS").Bold().FontSize(11);
                         col.Item().AlignCenter().Text("DE GUATEMALA").Bold().FontSize(11);
                         col.Item().AlignCenter().Text("INNOVACIONES AGRÍCOLAS DE GUATEMALA, S.A.").Bold().FontSize(8);
-                        col.Item().AlignCenter().Text("NIT: 120074427").Bold().FontSize(8);
+                        col.Item().AlignCenter().Text("NIT: 120074427").FontSize(8);
                         col.Item().AlignCenter().Text("Carr. Interamericana, Zona 0, Aldea Tiucal").FontSize(8);
                         col.Item().AlignCenter().Text("Asunción Mita, Jutiapa").FontSize(8);
                         col.Item().AlignCenter().Text("Sujeto a pagos trimestrales ISR").Bold().FontSize(8);
 
                         Dashed(col);
 
-                        col.Item().AlignCenter().Text("FACTURA").FontSize(12);
+                        col.Item().AlignCenter().Text("FACTURA").Bold().FontSize(12);
 
                         col.Item().Text($"Factura No.: #{docNumber}").FontSize(9);
                         col.Item().Text($"Fecha emisión: {date}").FontSize(9);
@@ -97,10 +95,10 @@ namespace QBTicketsApi.Services
                         {
                             table.ColumnsDefinition(columns =>
                             {
-                                columns.ConstantColumn(23);
-                                columns.RelativeColumn();
-                                columns.ConstantColumn(42);
-                                columns.ConstantColumn(48);
+                                columns.ConstantColumn(22);   // CANT
+                                columns.RelativeColumn(1);    // DETALLE
+                                columns.ConstantColumn(45);   // DESCUENTO
+                                columns.ConstantColumn(52);   // TOTAL
                             });
 
                             table.Header(header =>
@@ -169,7 +167,9 @@ namespace QBTicketsApi.Services
 
         private static void Dashed(ColumnDescriptor col)
         {
-            col.Item().PaddingVertical(3).Text("-----------------------------------------------").FontSize(8);
+            col.Item().PaddingVertical(4)
+                .Text("----------------------------------------------------------")
+                .FontSize(8);
         }
 
         private static string GetString(JsonElement element, string property, string fallback = "")
