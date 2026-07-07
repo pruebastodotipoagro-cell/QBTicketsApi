@@ -7,7 +7,7 @@ namespace QBTicketsApi.Services
 {
     public class TicketPdfService
     {
-        public byte[] GenerateSalesReceiptPdf(string json, FelResult fel)
+        public byte[] GenerateSalesReceiptPdf(string json, FelResult fel, string saleType)
         {
             using var doc = JsonDocument.Parse(json);
             var queryResponse = doc.RootElement.GetProperty("QueryResponse");
@@ -38,6 +38,8 @@ namespace QBTicketsApi.Services
             if (receipt.TryGetProperty("CustomerRef", out var customerRef))
                 customer = GetString(customerRef, "name", "Consumidor Final");
 
+            string tipoVentaTexto = saleType?.ToLower() == "contado" ? "CONTADO" : "CRÉDITO";
+
             var lines = receipt.GetProperty("Line")
                 .EnumerateArray()
                 .Where(x => x.TryGetProperty("SalesItemLineDetail", out _))
@@ -57,12 +59,12 @@ namespace QBTicketsApi.Services
                 {
                     page.ContinuousSize(80, Unit.Millimetre);
                     page.MarginHorizontal(3, Unit.Millimetre);
-                    page.MarginVertical(2, Unit.Millimetre);
+                    page.MarginVertical(4, Unit.Millimetre);
                     page.DefaultTextStyle(x => x.FontSize(8).FontFamily("Arial"));
 
                     page.Content().Column(col =>
                     {
-                        col.Spacing(3);
+                        col.Spacing(6);
 
                         if (File.Exists(logoPath))
                         {
@@ -85,8 +87,9 @@ namespace QBTicketsApi.Services
 
                         col.Item().AlignCenter().Text("FACTURA").Bold().FontSize(12);
 
-                        col.Item().Text($"Factura No.: #{docNumber}").FontSize(9);
+                        col.Item().PaddingTop(4).Text($"Factura No.: #{docNumber}").FontSize(9);
                         col.Item().Text($"Fecha emisión: {date}").FontSize(9);
+                        col.Item().Text($"Tipo de venta: {tipoVentaTexto}").Bold().FontSize(9);
                         col.Item().Text($"Cliente: {customer}").FontSize(9);
                         col.Item().Text($"NIT: {customerNit}").FontSize(9);
 
@@ -104,10 +107,10 @@ namespace QBTicketsApi.Services
 
                             table.Header(header =>
                             {
-                                header.Cell().Text("CANT").Bold().FontSize(8);
-                                header.Cell().AlignCenter().Text("DETALLE").Bold().FontSize(8);
-                                header.Cell().AlignRight().Text("Des.").Bold().FontSize(8);
-                                header.Cell().AlignRight().Text("TOTAL").Bold().FontSize(8);
+                                header.Cell().Text("CANT").Bold().FontSize(6);
+                                header.Cell().AlignCenter().Text("DETALLE").Bold().FontSize(6);
+                                header.Cell().AlignRight().Text("Des.").Bold().FontSize(6);
+                                header.Cell().AlignRight().Text("TOTAL").Bold().FontSize(6);
                             });
 
                             foreach (var line in lines)
@@ -121,10 +124,10 @@ namespace QBTicketsApi.Services
                                 if (detail.TryGetProperty("ItemRef", out var itemRef))
                                     itemName = GetString(itemRef, "name", "Producto");
 
-                                table.Cell().PaddingTop(4).AlignCenter().Text(qty.ToString("N0")).FontSize(8);
-                                table.Cell().PaddingTop(4).AlignCenter().Text(itemName.ToUpper()).Bold().FontSize(8);
-                                table.Cell().PaddingTop(4).AlignRight().Text("Q 0.00").FontSize(8);
-                                table.Cell().PaddingTop(4).AlignRight().Text("Q " + amount.ToString("N2")).Bold().FontSize(8);
+                                table.Cell().PaddingTop(5).AlignCenter().Text(qty.ToString("N0")).FontSize(6);
+                                table.Cell().PaddingTop(5).AlignCenter().Text(itemName.ToUpper()).Bold().FontSize(6);
+                                table.Cell().PaddingTop(5).AlignRight().Text("Q 0.00").FontSize(6);
+                                table.Cell().PaddingTop(5).AlignRight().Text("Q " + amount.ToString("N2")).Bold().FontSize(6);
                             }
                         });
 
@@ -138,7 +141,7 @@ namespace QBTicketsApi.Services
                         });
 
                         col.Item()
-                            .PaddingTop(6)
+                            .PaddingTop(8)
                             .AlignCenter()
                             .Text(NumberToWords(total).ToUpper())
                             .Bold()
@@ -149,17 +152,17 @@ namespace QBTicketsApi.Services
                         col.Item().Text($"Serie: {fel.Serie}").Bold().FontSize(8);
                         col.Item().Text($"Número de DTE: {fel.DteNumber}").Bold().FontSize(8);
 
-                        col.Item().PaddingTop(4).AlignCenter().Text("No. Autorización:").FontSize(9);
+                        col.Item().PaddingTop(6).AlignCenter().Text("No. Autorización:").FontSize(9);
                         col.Item().AlignCenter().Text(fel.AuthorizationNumber).Bold().FontSize(8);
 
-                        col.Item().PaddingTop(4).Text($"Fecha de Certificación: {certDateGuatemala:dd/MM/yyyy HH:mm}").Bold().FontSize(8);
+                        col.Item().PaddingTop(6).Text($"Fecha de Certificación: {certDateGuatemala:dd/MM/yyyy HH:mm}").Bold().FontSize(8);
                         col.Item().Text($"FECHA DE EMISION: {date}").Bold().FontSize(8);
                         col.Item().Text("CERTIFICADOR: MEGAPRINT, S.A.").Bold().FontSize(8);
                         col.Item().Text("NIT: 50510231").Bold().FontSize(8);
 
                         Dashed(col);
 
-                        col.Item().AlignCenter().Text("¡Gracias por su preferencia!").Bold().FontSize(9);
+                        col.Item().PaddingTop(4).AlignCenter().Text("¡Gracias por su preferencia!").Bold().FontSize(9);
                         col.Item().AlignCenter().Text("Contribuyendo al desarrollo agrícola de Guatemala.").Bold().FontSize(7);
                     });
                 });
@@ -168,7 +171,7 @@ namespace QBTicketsApi.Services
 
         private static void Dashed(ColumnDescriptor col)
         {
-            col.Item().PaddingVertical(3).LineHorizontal(1).LineColor(Colors.Black);
+            col.Item().PaddingVertical(6).LineHorizontal(1).LineColor(Colors.Black);
         }
 
         private static string GetString(JsonElement element, string property, string fallback = "")
