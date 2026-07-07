@@ -50,5 +50,92 @@ namespace QBTicketsApi.Services
 
             return token;
         }
+
+        public async Task<string> SolicitarFirmaAsync(string xmlDte, string token)
+        {
+            string url = _config["Megaprint:FirmaUrl"] ?? "";
+            string requestId = Guid.NewGuid().ToString().ToUpperInvariant();
+
+            // Usamos XElement + XCData para que el XML se genere bien formado,
+            // sin depender de que un humano copie/pegue el contenido a mano.
+            var requestXml = new XElement("FirmaDocumentoRequest",
+                new XAttribute("id", requestId),
+                new XElement("xml_dte", new XCData(xmlDte))
+            );
+
+            string body = new XDeclaration("1.0", "UTF-8", null) + Environment.NewLine + requestXml;
+
+            var client = _httpClientFactory.CreateClient();
+            var content = new StringContent(body, Encoding.UTF8, "application/xml");
+
+            var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var response = await client.SendAsync(request);
+            var responseText = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+                throw new Exception("Error HTTP solicitando firma Megaprint: " + responseText);
+
+            var doc = XDocument.Parse(responseText);
+
+            var tipo = doc.Descendants("tipo_respuesta").FirstOrDefault()?.Value;
+            if (tipo != "0")
+            {
+                var codErr = doc.Descendants("cod_error").FirstOrDefault()?.Value ?? "sin código";
+                var descErr = doc.Descendants("desc_error").FirstOrDefault()?.Value ?? "sin descripción";
+                throw new Exception($"Megaprint rechazó la firma [{codErr}]: {descErr}");
+            }
+
+            var xmlFirmado = doc.Descendants("xml_dte").FirstOrDefault()?.Value;
+
+            if (string.IsNullOrWhiteSpace(xmlFirmado))
+                throw new Exception("Megaprint no devolvió xml_dte firmado: " + responseText);
+
+            return xmlFirmado;
+        }
+
+        public async Task<(string xmlCertificado, string uuid)> RegistrarDocumentoAsync(string xmlDteFirmado, string token)
+        {
+            string url = _config["Megaprint:RegistroUrl"] ?? "";
+            string requestId = Guid.NewGuid().ToString().ToUpperInvariant();
+
+            var requestXml = new XElement("RegistraDocumentoXMLRequest",
+                new XAttribute("id", requestId),
+                new XElement("xml_dte", new XCData(xmlDteFirmado))
+            );
+
+            string body = new XDeclaration("1.0", "UTF-8", null) + Environment.NewLine + requestXml;
+
+            var client = _httpClientFactory.CreateClient();
+            var content = new StringContent(body, Encoding.UTF8, "application/xml");
+
+            var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var response = await client.SendAsync(request);
+            var responseText = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+                throw new Exception("Error HTTP registrando documento Megaprint: " + responseText);
+
+            var doc = XDocument.Parse(responseText);
+
+            var tipo = doc.Descendants("tipo_respuesta").FirstOrDefault()?.Value;
+            if (tipo != "0")
+            {
+                var codErr = doc.Descendants("cod_error").FirstOrDefault()?.Value ?? "sin código";
+                var descErr = doc.Descendants("desc_error").FirstOrDefault()?.Value ?? "sin descripción";
+                throw new Exception($"Megaprint rechazó el registro [{codErr}]: {descErr}");
+            }
+
+            var xmlCertificado = doc.Descendants("xml_dte").FirstOrDefault()?.Value ?? "";
+            var uuid = doc.Descendants("uuid").FirstOrDefault()?.Value ?? "";
+
+            if (string.IsNullOrWhiteSpace(uuid))
+                throw new Exception("Megaprint no devolvió UUID de certificación: " + responseText);
+
+            return (xmlCertificado, uuid);
+        }
     }
 }

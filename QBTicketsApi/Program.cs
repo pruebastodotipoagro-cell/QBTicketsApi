@@ -23,7 +23,7 @@ builder.Services.AddScoped<QBTicketsApi.Services.TicketPdfService>();
 builder.Services.AddScoped<QBTicketsApi.Services.FelService>();
 builder.Services.AddSingleton<QBTicketsApi.Services.CustomerLookupService>();
 builder.Services.AddScoped<MegaprintService>();
-
+builder.Services.AddScoped<FelXmlBuilderService>();
 
 var app = builder.Build();
 

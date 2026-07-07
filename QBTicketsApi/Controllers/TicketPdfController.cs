@@ -35,7 +35,8 @@ namespace QBTicketsApi.Controllers
             if (string.IsNullOrWhiteSpace(json))
                 return NotFound("No se encontró el recibo.");
 
-            var fel = _felService.CertifyMock(id, id);
+            string saleType = json.Contains("SalesReceipt") ? "contado" : "credito";
+            var fel = await _felService.CertifyAsync(id, json, saleType);
 
             var pdf = _ticketPdfService.GenerateSalesReceiptPdf(json, fel);
 

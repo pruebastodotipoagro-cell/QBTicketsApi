@@ -29,7 +29,10 @@ namespace QBTicketsApi.Services
             }
 
             string docNumber = GetString(receipt, "DocNumber", "SIN-NUMERO");
-            string date = GetString(receipt, "TxnDate", DateTime.Now.ToString("yyyy-MM-dd"));
+            string rawDate = GetString(receipt, "TxnDate", DateTime.Now.ToString("yyyy-MM-dd"));
+            string date = DateTime.TryParse(rawDate, out var parsedTxnDate)
+                ? parsedTxnDate.ToString("dd/MM/yyyy")
+                : rawDate;
             decimal total = GetDecimal(receipt, "TotalAmt");
             string customerNit = GetString(receipt, "CustomerNit", "CF");
 
@@ -125,7 +128,11 @@ namespace QBTicketsApi.Services
 
                         col.Item().Text($"Número DTE: {fel.DteNumber}").FontSize(8);
 
-                        col.Item().Text($"Fecha certificación: {fel.CertificationDate:dd/MM/yyyy HH:mm}")
+                        var certDateGuatemala = fel.CertificationDate.Kind == DateTimeKind.Utc
+                            ? TimeZoneInfo.ConvertTimeFromUtc(fel.CertificationDate, TimeZoneInfo.FindSystemTimeZoneById("America/Guatemala"))
+                            : fel.CertificationDate;
+
+                        col.Item().Text($"Fecha certificación: {certDateGuatemala:dd/MM/yyyy HH:mm}")
                             .FontSize(8);
 
                         col.Item().Text("Número de autorización:")
