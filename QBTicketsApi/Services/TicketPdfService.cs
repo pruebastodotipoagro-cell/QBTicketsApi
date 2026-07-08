@@ -59,7 +59,8 @@ namespace QBTicketsApi.Services
                 {
                     page.ContinuousSize(80, Unit.Millimetre);
                     page.MarginHorizontal(3, Unit.Millimetre);
-                    page.MarginVertical(4, Unit.Millimetre);
+                    page.MarginTop(1, Unit.Millimetre);
+                    page.MarginBottom(4, Unit.Millimetre);
                     page.DefaultTextStyle(x => x.FontSize(8).FontFamily("Arial"));
 
                     page.Content().Column(col =>
@@ -70,7 +71,7 @@ namespace QBTicketsApi.Services
                         {
                             col.Item()
                                 .AlignCenter()
-                                .Width(62)
+                                .Width(74)
                                 .Image(logoPath)
                                 .FitWidth();
                         }
@@ -131,8 +132,7 @@ namespace QBTicketsApi.Services
                             }
                         });
 
-                        Dashed(col);
-                        Dashed(col);
+                        DoubleDashed(col);
 
                         col.Item().Row(row =>
                         {
@@ -171,9 +171,41 @@ namespace QBTicketsApi.Services
 
         private static void Dashed(ColumnDescriptor col)
         {
-            col.Item().PaddingVertical(6).LineHorizontal(1).LineColor(Colors.Black);
+            col.Item().PaddingVertical(6).Row(row =>
+            {
+                for (int i = 0; i < 40; i++)
+                {
+                    if (i % 2 == 0)
+                        row.RelativeItem().Height(1).Background(Colors.Black);
+                    else
+                        row.RelativeItem().Height(1);
+                }
+            });
         }
 
+        private static void DoubleDashed(ColumnDescriptor col)
+        {
+            col.Item().Column(inner =>
+            {
+                inner.Spacing(2);
+                DashedLineOnly(inner);
+                DashedLineOnly(inner);
+            });
+        }
+
+        private static void DashedLineOnly(ColumnDescriptor col)
+        {
+            col.Item().Row(row =>
+            {
+                for (int i = 0; i < 40; i++)
+                {
+                    if (i % 2 == 0)
+                        row.RelativeItem().Height(1).Background(Colors.Black);
+                    else
+                        row.RelativeItem().Height(1);
+                }
+            });
+        }
         private static string GetString(JsonElement element, string property, string fallback = "")
         {
             return element.TryGetProperty(property, out var value)
