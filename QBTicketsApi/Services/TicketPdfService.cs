@@ -57,7 +57,7 @@ namespace QBTicketsApi.Services
             {
                 container.Page(page =>
                 {
-                    page.Size(80, 220, Unit.Millimetre);
+                    page.Size(80, 190, Unit.Millimetre);
                     page.MarginHorizontal(3, Unit.Millimetre);
                     page.MarginTop(0, Unit.Millimetre);
                     page.MarginBottom(4, Unit.Millimetre);
@@ -88,12 +88,12 @@ namespace QBTicketsApi.Services
                         col.Item().AlignCenter().Text("FACTURA").Bold().FontSize(11.4f);
 
                         col.Item().PaddingTop(2).Text($"Factura No.: #{docNumber}").Bold().FontSize(7.6f);
-                        col.Item().Text($"Fecha emisión: {date}").FontSize(7.6f);
-                        col.Item().Text($"Tipo de venta: {tipoVentaTexto}").Bold().FontSize(7.6f);
-                        col.Item().Text($"Cliente: {customer}").FontSize(7.6f);
-                        col.Item().Text($"NIT: {customerNit}").FontSize(7.6f);
+                        col.Item().PaddingTop(2).Text($"Fecha emisión: {date}").FontSize(7.6f);
+                        col.Item().PaddingTop(2).Text($"Tipo de venta: {tipoVentaTexto}").Bold().FontSize(7.6f);
+                        col.Item().PaddingTop(3).Text($"NIT: {customerNit}").FontSize(7.6f);
+                        col.Item().PaddingTop(2).Text($"Cliente: {customer}").FontSize(7.6f);
 
-                        col.Item().PaddingTop(3).Table(table =>
+                        col.Item().PaddingTop(4).Table(table =>
                         {
                             table.ColumnsDefinition(columns =>
                             {
@@ -127,10 +127,10 @@ namespace QBTicketsApi.Services
                                 if (detail.TryGetProperty("ItemRef", out var itemRef))
                                     itemName = GetString(itemRef, "name", "Producto");
 
-                                table.Cell().PaddingTop(7).AlignCenter().Text(qty.ToString("N0")).FontSize(6.7f);
-                                table.Cell().PaddingTop(7).AlignCenter().Text(itemName.ToUpper()).Bold().FontSize(6.7f);
-                                table.Cell().PaddingTop(7).AlignRight().Text("0.00").FontSize(6.7f);
-                                table.Cell().PaddingTop(7).AlignRight().Text("Q " + amount.ToString("N2")).Bold().FontSize(6.7f);
+                                table.Cell().PaddingTop(5).AlignCenter().Text(qty.ToString("N0")).FontSize(6.7f);
+                                table.Cell().PaddingTop(5).AlignCenter().Text(itemName.ToUpper()).Bold().FontSize(6.35f);
+                                table.Cell().PaddingTop(5).AlignRight().Text("0.00").FontSize(6.7f);
+                                table.Cell().PaddingTop(5).AlignRight().Text("Q " + amount.ToString("N2")).Bold().FontSize(6.7f);
                             }
                         });
 
@@ -151,16 +151,15 @@ namespace QBTicketsApi.Services
 
                         Dashed(col);
 
-                        col.Item().Text($"Serie: {fel.Serie}").Bold().FontSize(7.6f);
-                        col.Item().Text($"Número de DTE: {fel.DteNumber}").Bold().FontSize(7.6f);
+                        col.Item().PaddingTop(3).Text($"Serie: {fel.Serie}").Bold().FontSize(7.6f);
+                        col.Item().PaddingTop(3).Text($"Número de DTE: {fel.DteNumber}").Bold().FontSize(7.6f);
 
-                        col.Item().PaddingTop(5).AlignCenter().Text("No. Autorización:").Bold().FontSize(7.6f);
-                        col.Item().AlignCenter().Text(fel.AuthorizationNumber).Bold().FontSize(6.7f);
+                        col.Item().PaddingTop(6).AlignCenter().Text("No. Autorización:").Bold().FontSize(7.6f);
+                        col.Item().PaddingTop(2).AlignCenter().Text(fel.AuthorizationNumber).Bold().FontSize(6.7f);
 
-                        col.Item().PaddingTop(5).Text($"Fecha de Certificación: {certDateGuatemala:dd/MM/yyyy HH:mm}").Bold().FontSize(7.6f);
-                        col.Item().Text($"FECHA DE EMISION: {date}").Bold().FontSize(7.6f);
-                        col.Item().Text($"CERTIFICADOR: {fel.CertifierName}").Bold().FontSize(7.6f);
-                        col.Item().Text($"NIT: {fel.CertifierNit}").Bold().FontSize(7.6f);
+                        col.Item().PaddingTop(6).Text($"Fecha de Certificación: {certDateGuatemala:dd/MM/yyyy HH:mm}").Bold().FontSize(7.6f);
+                        col.Item().PaddingTop(3).Text($"CERTIFICADOR: {fel.CertifierName}").Bold().FontSize(7.6f);
+                        col.Item().PaddingTop(3).Text($"NIT: {fel.CertifierNit}").Bold().FontSize(7.6f);
 
                         Dashed(col);
 
