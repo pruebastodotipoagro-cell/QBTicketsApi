@@ -61,7 +61,6 @@ namespace QBTicketsApi.Services
                     page.MarginHorizontal(3, Unit.Millimetre);
                     page.MarginTop(0, Unit.Millimetre);
                     page.MarginBottom(4, Unit.Millimetre);
-
                     page.DefaultTextStyle(x => x.FontSize(10).FontFamily("Arial"));
 
                     page.Content().Column(col =>
@@ -137,8 +136,8 @@ namespace QBTicketsApi.Services
 
                         col.Item().Row(row =>
                         {
-                            row.RelativeItem().AlignLeft().Text("TOTAL:").Bold().FontSize(14);
-                            row.RelativeItem().AlignRight().Text("Q " + total.ToString("N2")).Bold().FontSize(14);
+                            row.RelativeItem().AlignLeft().Text("TOTAL:").Bold().FontSize(11);
+                            row.RelativeItem().AlignRight().Text("Q " + total.ToString("N2")).Bold().FontSize(11);
                         });
 
                         col.Item()
