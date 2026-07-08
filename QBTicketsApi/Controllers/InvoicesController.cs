@@ -21,17 +21,19 @@ namespace QBTicketsApi.Controllers
             return Content(result, "application/json");
         }
 
+        // GET /api/invoices/sales-receipts?desde=2026-07-01&hasta=2026-07-08
         [HttpGet("sales-receipts")]
-        public async Task<IActionResult> GetSalesReceipts()
+        public async Task<IActionResult> GetSalesReceipts([FromQuery] string? desde = null, [FromQuery] string? hasta = null)
         {
-            var result = await _quickBooksService.GetSalesReceipts();
+            var result = await _quickBooksService.GetSalesReceipts(desde, hasta);
             return Content(result, "application/json");
         }
 
+        // GET /api/invoices/credit-invoices?desde=2026-07-01&hasta=2026-07-08
         [HttpGet("credit-invoices")]
-        public async Task<IActionResult> GetCreditInvoices()
+        public async Task<IActionResult> GetCreditInvoices([FromQuery] string? desde = null, [FromQuery] string? hasta = null)
         {
-            var result = await _quickBooksService.GetCreditInvoicesList();
+            var result = await _quickBooksService.GetCreditInvoicesList(desde, hasta);
             return Ok(new { invoices = result });
         }
 

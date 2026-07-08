@@ -4,8 +4,6 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using QBTicketsApi.DTOs;
-using System.Text.Json;
-using QBTicketsApi.DTOs;
 
 namespace QBTicketsApi.Services
 {
@@ -16,17 +14,16 @@ namespace QBTicketsApi.Services
         private readonly IConfiguration _config;
         private readonly CustomerLookupService _customerLookupService;
 
-
         public QuickBooksService(AppDbContext db, IHttpClientFactory httpClientFactory, IConfiguration config, CustomerLookupService customerLookupService)
         {
             _db = db;
             _httpClientFactory = httpClientFactory;
             _config = config;
             _customerLookupService = customerLookupService;
-
         }
 
-        public async Task<string> GetSalesReceipts()
+        // fechaDesde / fechaHasta en formato "yyyy-MM-dd". Si vienen null/vacíos, no se filtra por fecha.
+        public async Task<string> GetSalesReceipts(string? fechaDesde = null, string? fechaHasta = null)
         {
             var connection = _db.QuickBooksConnections.FirstOrDefault();
             if (connection == null) return "No hay conexión QuickBooks.";
@@ -40,7 +37,10 @@ namespace QBTicketsApi.Services
             client.DefaultRequestHeaders.Authorization =
                 new AuthenticationHeaderValue("Bearer", connection.AccessToken);
 
-            string query = Uri.EscapeDataString("SELECT * FROM SalesReceipt MAXRESULTS 10");
+            string whereClause = BuildDateWhereClause(fechaDesde, fechaHasta);
+            string queryText = $"SELECT * FROM SalesReceipt{whereClause} MAXRESULTS 200";
+
+            string query = Uri.EscapeDataString(queryText);
             string url = $"https://quickbooks.api.intuit.com/v3/company/{connection.RealmId}/query?query={query}";
 
             var response = await client.GetAsync(url);
@@ -113,7 +113,8 @@ namespace QBTicketsApi.Services
             return await response.Content.ReadAsStringAsync();
         }
 
-        public async Task<string> GetCreditInvoices()
+        // fechaDesde / fechaHasta en formato "yyyy-MM-dd". Si vienen null/vacíos, no se filtra por fecha.
+        public async Task<string> GetCreditInvoices(string? fechaDesde = null, string? fechaHasta = null)
         {
             var connection = _db.QuickBooksConnections.FirstOrDefault();
             if (connection == null) return "No hay conexión QuickBooks.";
@@ -132,7 +133,10 @@ namespace QBTicketsApi.Services
                 new MediaTypeWithQualityHeaderValue("application/json")
             );
 
-            string query = Uri.EscapeDataString("SELECT * FROM Invoice MAXRESULTS 20");
+            string whereClause = BuildDateWhereClause(fechaDesde, fechaHasta);
+            string queryText = $"SELECT * FROM Invoice{whereClause} MAXRESULTS 200";
+
+            string query = Uri.EscapeDataString(queryText);
             string url = $"https://quickbooks.api.intuit.com/v3/company/{connection.RealmId}/query?query={query}";
 
             var response = await client.GetAsync(url);
@@ -140,9 +144,9 @@ namespace QBTicketsApi.Services
             return await response.Content.ReadAsStringAsync();
         }
 
-        public async Task<List<InvoiceResponseDto>> GetCreditInvoicesList()
+        public async Task<List<InvoiceResponseDto>> GetCreditInvoicesList(string? fechaDesde = null, string? fechaHasta = null)
         {
-            var json = await GetCreditInvoices();
+            var json = await GetCreditInvoices(fechaDesde, fechaHasta);
 
             var result = new List<InvoiceResponseDto>();
 
@@ -175,12 +179,19 @@ namespace QBTicketsApi.Services
                 if (inv.TryGetProperty("Balance", out var balanceValue))
                     balanceValue.TryGetDecimal(out balance);
 
+                // Si esta factura ya fue certificada, usamos el NIT real con el que se certificó
+                // (el que el cajero corrigió, si aplicó), no el del lookup automático.
+                var certificada = _db.Invoices.FirstOrDefault(x => x.QuickBooksId == id && x.IsCertified);
+                string customerNit = certificada != null
+                    ? certificada.CustomerNit
+                    : _customerLookupService.GetNit(customerName);
+
                 result.Add(new InvoiceResponseDto
                 {
                     QbInvoiceId = id,
                     InvoiceNumber = docNumber,
                     CustomerName = customerName,
-                    CustomerNit = _customerLookupService.GetNit(customerName),
+                    CustomerNit = customerNit,
                     IssueDate = issueDate,
                     Total = total,
                     Balance = balance,
@@ -241,6 +252,24 @@ namespace QBTicketsApi.Services
 
             var response = await client.GetAsync(url);
             return await response.Content.ReadAsStringAsync();
+        }
+
+        // Construye "WHERE TxnDate >= '...' AND TxnDate <= '...'" según lo que venga.
+        // QBO espera fechas en formato yyyy-MM-dd dentro del query.
+        private static string BuildDateWhereClause(string? fechaDesde, string? fechaHasta)
+        {
+            var condiciones = new List<string>();
+
+            if (!string.IsNullOrWhiteSpace(fechaDesde) && DateTime.TryParse(fechaDesde, out var desde))
+                condiciones.Add($"TxnDate >= '{desde:yyyy-MM-dd}'");
+
+            if (!string.IsNullOrWhiteSpace(fechaHasta) && DateTime.TryParse(fechaHasta, out var hasta))
+                condiciones.Add($"TxnDate <= '{hasta:yyyy-MM-dd}'");
+
+            if (condiciones.Count == 0)
+                return "";
+
+            return " WHERE " + string.Join(" AND ", condiciones);
         }
 
         private class QuickBooksTokenResponse
