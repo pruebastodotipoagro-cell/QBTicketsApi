@@ -57,7 +57,7 @@ namespace QBTicketsApi.Services
             {
                 container.Page(page =>
                 {
-                    page.Size(80, PageSizes.A4.Height, Unit.Millimetre);
+                    page.Size(80, 220, Unit.Millimetre);
                     page.MarginHorizontal(3, Unit.Millimetre);
                     page.MarginTop(0, Unit.Millimetre);
                     page.MarginBottom(4, Unit.Millimetre);
