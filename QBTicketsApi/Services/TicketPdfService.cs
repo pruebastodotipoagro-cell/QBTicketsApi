@@ -173,7 +173,7 @@ namespace QBTicketsApi.Services
         {
             col.Item().PaddingVertical(6).Row(row =>
             {
-                for (int i = 0; i < 40; i++)
+                for (int i = 0; i < 120; i++)
                 {
                     if (i % 2 == 0)
                         row.RelativeItem().Height(1).Background(Colors.Black);
@@ -197,7 +197,7 @@ namespace QBTicketsApi.Services
         {
             col.Item().Row(row =>
             {
-                for (int i = 0; i < 40; i++)
+                for (int i = 0; i < 120; i++)
                 {
                     if (i % 2 == 0)
                         row.RelativeItem().Height(1).Background(Colors.Black);
