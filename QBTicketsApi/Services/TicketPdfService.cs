@@ -57,7 +57,7 @@ namespace QBTicketsApi.Services
             {
                 container.Page(page =>
                 {
-                    page.ContinuousSize(80, Unit.Millimetre);
+                    page.Size(80, 200, Unit.Millimetre);
                     page.MarginHorizontal(3, Unit.Millimetre);
                     page.MarginTop(1, Unit.Millimetre);
                     page.MarginBottom(4, Unit.Millimetre);
@@ -157,8 +157,8 @@ namespace QBTicketsApi.Services
 
                         col.Item().PaddingTop(6).Text($"Fecha de Certificación: {certDateGuatemala:dd/MM/yyyy HH:mm}").Bold().FontSize(8);
                         col.Item().Text($"FECHA DE EMISION: {date}").Bold().FontSize(8);
-                        col.Item().Text("CERTIFICADOR: MEGAPRINT, S.A.").Bold().FontSize(8);
-                        col.Item().Text("NIT: 50510231").Bold().FontSize(8);
+                        col.Item().Text($"CERTIFICADOR: {fel.CertifierName}").Bold().FontSize(8);
+                        col.Item().Text($"NIT: {fel.CertifierNit}").Bold().FontSize(8);
 
                         Dashed(col);
 
@@ -173,12 +173,19 @@ namespace QBTicketsApi.Services
         {
             col.Item().PaddingVertical(6).Row(row =>
             {
-                for (int i = 0; i < 120; i++)
+                const float dashWidth = 1.5f;
+                const float gapWidth = 1.5f;
+                const float totalWidth = 74f;
+                int segments = (int)(totalWidth / (dashWidth + gapWidth));
+
+                for (int i = 0; i < segments; i++)
                 {
-                    if (i % 2 == 0)
-                        row.RelativeItem().Height(1).Background(Colors.Black);
-                    else
-                        row.RelativeItem().Height(1);
+                    row.ConstantItem(dashWidth, Unit.Millimetre)
+                        .Height(0.3f, Unit.Millimetre)
+                        .Background(Colors.Black);
+
+                    row.ConstantItem(gapWidth, Unit.Millimetre)
+                        .Height(0.3f, Unit.Millimetre);
                 }
             });
         }
@@ -187,7 +194,7 @@ namespace QBTicketsApi.Services
         {
             col.Item().Column(inner =>
             {
-                inner.Spacing(2);
+                inner.Spacing(1.5f, Unit.Millimetre);
                 DashedLineOnly(inner);
                 DashedLineOnly(inner);
             });
@@ -197,15 +204,23 @@ namespace QBTicketsApi.Services
         {
             col.Item().Row(row =>
             {
-                for (int i = 0; i < 120; i++)
+                const float dashWidth = 1.5f;
+                const float gapWidth = 1.5f;
+                const float totalWidth = 74f;
+                int segments = (int)(totalWidth / (dashWidth + gapWidth));
+
+                for (int i = 0; i < segments; i++)
                 {
-                    if (i % 2 == 0)
-                        row.RelativeItem().Height(1).Background(Colors.Black);
-                    else
-                        row.RelativeItem().Height(1);
+                    row.ConstantItem(dashWidth, Unit.Millimetre)
+                        .Height(0.3f, Unit.Millimetre)
+                        .Background(Colors.Black);
+
+                    row.ConstantItem(gapWidth, Unit.Millimetre)
+                        .Height(0.3f, Unit.Millimetre);
                 }
             });
         }
+
         private static string GetString(JsonElement element, string property, string fallback = "")
         {
             return element.TryGetProperty(property, out var value)

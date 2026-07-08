@@ -22,6 +22,8 @@
         public string FelAuthorizationNumber { get; set; } = "";
         public DateTime? FelCertificationDate { get; set; }
         public string FelQr { get; set; } = "";
+        public string FelCertifierName { get; set; } = "";
+        public string FelCertifierNit { get; set; } = "";
         public bool IsCertified { get; set; } = false;
     }
 }

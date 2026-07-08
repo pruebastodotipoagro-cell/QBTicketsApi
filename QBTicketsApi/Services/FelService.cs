@@ -1,5 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
+using System.Xml.Linq;
+using System.Linq;
 using QBTicketsApi.Database;
 using QBTicketsApi.Models;
 
@@ -13,6 +15,8 @@ namespace QBTicketsApi.Services
         public DateTime CertificationDate { get; set; }
         public string Qr { get; set; } = "";
         public string CustomerNit { get; set; } = "";
+        public string CertifierName { get; set; } = "";
+        public string CertifierNit { get; set; } = "";
     }
 
     public class FelService
@@ -65,7 +69,9 @@ namespace QBTicketsApi.Services
                     AuthorizationNumber = existing.FelAuthorizationNumber,
                     CertificationDate = existing.FelCertificationDate ?? DateTime.UtcNow,
                     Qr = existing.FelQr,
-                    CustomerNit = existing.CustomerNit
+                    CustomerNit = existing.CustomerNit,
+                    CertifierName = existing.FelCertifierName,
+                    CertifierNit = existing.FelCertifierNit
                 };
             }
 
@@ -73,9 +79,10 @@ namespace QBTicketsApi.Services
             var xmlSinFirmar = _xmlBuilder.BuildFactXml(quickBooksJson, nitOverride);
             var token = await _megaprintService.SolicitarTokenAsync();
             var xmlFirmado = await _megaprintService.SolicitarFirmaAsync(xmlSinFirmar, token);
-            var (_, uuid) = await _megaprintService.RegistrarDocumentoAsync(xmlFirmado, token);
+            var (xmlCertificado, uuid) = await _megaprintService.RegistrarDocumentoAsync(xmlFirmado, token);
 
             var (serie, numero) = ExtractSerieYNumero(uuid);
+            var (certifierName, certifierNit) = ExtractCertificador(xmlCertificado);
             var certificationDate = DateTime.UtcNow;
 
             var (docNumber, customerName, total, issueDate) = ParseResumen(quickBooksJson);
@@ -99,6 +106,8 @@ namespace QBTicketsApi.Services
                 FelAuthorizationNumber = uuid,
                 FelCertificationDate = certificationDate,
                 FelQr = "",
+                FelCertifierName = certifierName,
+                FelCertifierNit = certifierNit,
                 IsCertified = true
             };
 
@@ -112,7 +121,9 @@ namespace QBTicketsApi.Services
                 AuthorizationNumber = uuid,
                 CertificationDate = certificationDate,
                 Qr = "",
-                CustomerNit = customerNit
+                CustomerNit = customerNit,
+                CertifierName = certifierName,
+                CertifierNit = certifierNit
             };
         }
 
@@ -131,6 +142,28 @@ namespace QBTicketsApi.Services
             }
 
             return (serie, numero);
+        }
+
+        // Extrae el nombre y NIT del certificador reales desde el XML ya certificado por Megaprint,
+        // en vez de dejarlos fijos como texto en el ticket.
+        private static (string certifierName, string certifierNit) ExtractCertificador(string xmlCertificado)
+        {
+            try
+            {
+                var doc = XDocument.Parse(xmlCertificado);
+
+                string name = doc.Descendants()
+                    .FirstOrDefault(e => e.Name.LocalName == "NombreCertificador")?.Value ?? "";
+
+                string nit = doc.Descendants()
+                    .FirstOrDefault(e => e.Name.LocalName == "NITCertificador")?.Value ?? "";
+
+                return (name, nit);
+            }
+            catch
+            {
+                return ("", "");
+            }
         }
 
         private static (string docNumber, string customerName, decimal total, DateTime issueDate) ParseResumen(string quickBooksJson)
