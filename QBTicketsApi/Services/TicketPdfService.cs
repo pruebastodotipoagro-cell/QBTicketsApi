@@ -57,9 +57,9 @@ namespace QBTicketsApi.Services
             {
                 container.Page(page =>
                 {
-                    page.Size(80, 200, Unit.Millimetre);
+                    page.Size(80, PageSizes.A4.Height, Unit.Millimetre);
                     page.MarginHorizontal(3, Unit.Millimetre);
-                    page.MarginTop(1, Unit.Millimetre);
+                    page.MarginTop(0, Unit.Millimetre);
                     page.MarginBottom(4, Unit.Millimetre);
                     page.DefaultTextStyle(x => x.FontSize(8).FontFamily("Arial"));
 
@@ -173,50 +173,44 @@ namespace QBTicketsApi.Services
         {
             col.Item().PaddingVertical(6).Row(row =>
             {
-                const float dashWidth = 1.5f;
-                const float gapWidth = 1.5f;
+                const float dashWidth = 3f;
+                const float gapWidth = 3f;
                 const float totalWidth = 74f;
                 int segments = (int)(totalWidth / (dashWidth + gapWidth));
 
                 for (int i = 0; i < segments; i++)
                 {
                     row.ConstantItem(dashWidth, Unit.Millimetre)
-                        .Height(0.3f, Unit.Millimetre)
+                        .Height(0.4f, Unit.Millimetre)
                         .Background(Colors.Black);
 
-                    row.ConstantItem(gapWidth, Unit.Millimetre)
-                        .Height(0.3f, Unit.Millimetre);
+                    row.ConstantItem(gapWidth, Unit.Millimetre);
                 }
             });
         }
 
         private static void DoubleDashed(ColumnDescriptor col)
         {
-            col.Item().Column(inner =>
-            {
-                inner.Spacing(1.5f, Unit.Millimetre);
-                DashedLineOnly(inner);
-                DashedLineOnly(inner);
-            });
+            col.Item().PaddingBottom(3, Unit.Millimetre).Element(e => DashedLineOnly(e));
+            col.Item().Element(e => DashedLineOnly(e));
         }
 
-        private static void DashedLineOnly(ColumnDescriptor col)
+        private static void DashedLineOnly(IContainer container)
         {
-            col.Item().Row(row =>
+            container.Row(row =>
             {
-                const float dashWidth = 1.5f;
-                const float gapWidth = 1.5f;
+                const float dashWidth = 3f;
+                const float gapWidth = 3f;
                 const float totalWidth = 74f;
                 int segments = (int)(totalWidth / (dashWidth + gapWidth));
 
                 for (int i = 0; i < segments; i++)
                 {
                     row.ConstantItem(dashWidth, Unit.Millimetre)
-                        .Height(0.3f, Unit.Millimetre)
+                        .Height(0.4f, Unit.Millimetre)
                         .Background(Colors.Black);
 
-                    row.ConstantItem(gapWidth, Unit.Millimetre)
-                        .Height(0.3f, Unit.Millimetre);
+                    row.ConstantItem(gapWidth, Unit.Millimetre);
                 }
             });
         }
