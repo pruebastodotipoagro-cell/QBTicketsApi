@@ -107,10 +107,10 @@ namespace QBTicketsApi.Services
 
                             table.Header(header =>
                             {
-                                header.Cell().Text("CANT").Bold().FontSize(6);
-                                header.Cell().AlignCenter().Text("DETALLE").Bold().FontSize(6);
-                                header.Cell().AlignRight().Text("Des.").Bold().FontSize(6);
-                                header.Cell().AlignRight().Text("TOTAL").Bold().FontSize(6);
+                                header.Cell().Text("CANT").Bold().FontSize(7);
+                                header.Cell().AlignCenter().Text("DETALLE").Bold().FontSize(7);
+                                header.Cell().AlignRight().Text("Des.").Bold().FontSize(7);
+                                header.Cell().AlignRight().Text("TOTAL").Bold().FontSize(7);
                             });
 
                             foreach (var line in lines)
@@ -124,10 +124,10 @@ namespace QBTicketsApi.Services
                                 if (detail.TryGetProperty("ItemRef", out var itemRef))
                                     itemName = GetString(itemRef, "name", "Producto");
 
-                                table.Cell().PaddingTop(5).AlignCenter().Text(qty.ToString("N0")).FontSize(6);
-                                table.Cell().PaddingTop(5).AlignCenter().Text(itemName.ToUpper()).Bold().FontSize(6);
-                                table.Cell().PaddingTop(5).AlignRight().Text("Q 0.00").FontSize(6);
-                                table.Cell().PaddingTop(5).AlignRight().Text("Q " + amount.ToString("N2")).Bold().FontSize(6);
+                                table.Cell().PaddingTop(5).AlignCenter().Text(qty.ToString("N0")).FontSize(7);
+                                table.Cell().PaddingTop(5).AlignCenter().Text(itemName.ToUpper()).Bold().FontSize(7);
+                                table.Cell().PaddingTop(5).AlignRight().Text("Q 0.00").FontSize(7);
+                                table.Cell().PaddingTop(5).AlignRight().Text("Q " + amount.ToString("N2")).Bold().FontSize(7);
                             }
                         });
 
