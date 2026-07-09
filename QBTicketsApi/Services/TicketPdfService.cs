@@ -53,7 +53,7 @@ namespace QBTicketsApi.Services
 
             var logoPath = Path.Combine(AppContext.BaseDirectory, "Assets", "Logo INNOVACIONES.jpeg");
 
-            float pageHeight = Math.Min(420, Math.Max(210, 185 + (lines.Count * 9)));
+            float pageHeight = Math.Min(320, Math.Max(155, 145 + (lines.Count * 8)));//
 
             return Document.Create(container =>
             {
@@ -73,7 +73,7 @@ namespace QBTicketsApi.Services
                         {
                             col.Item()
                                 .AlignCenter()
-                                .Width(28, Unit.Millimetre)
+                                .Width(34, Unit.Millimetre)
                                 .Image(logoPath)
                                 .FitWidth();
                         }
