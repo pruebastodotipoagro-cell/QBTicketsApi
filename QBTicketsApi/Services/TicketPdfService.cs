@@ -63,7 +63,7 @@ namespace QBTicketsApi.Services
                     page.MarginHorizontal(3, Unit.Millimetre);
                     page.MarginTop(0, Unit.Millimetre);
                     page.MarginBottom(3, Unit.Millimetre);
-                    page.DefaultTextStyle(x => x.FontFamily("Arial").FontSize(7.4f));
+                    page.DefaultTextStyle(x => x.FontFamily("Arial").FontSize(7.8f));
 
                     page.Content().Column(col =>
                     {
@@ -208,14 +208,24 @@ namespace QBTicketsApi.Services
 
                         Space(col, 4);
 
-                        col.Item().Text("TOTAL DE LA FACTURA EN LETRAS:").Bold().FontSize(8.8f);
-                        col.Item().Text(NumberToWords(total).ToUpper()).Bold().FontSize(7.8f);
+                        col.Item().Text("TOTAL DE LA FACTURA EN LETRAS:")
+                        .ExtraBold()
+                        .FontSize(8.8f);
+
+                        col.Item().Text(NumberToWords(total).ToUpper())
+                            .FontSize(7.4f);
 
                         Space(col, 5);
 
-                        col.Item().AlignCenter().Text("SUJETO A PAGOS TRIMESTRALES ISR").Bold().FontSize(8.0f);
-                        col.Item().Text($"CERTIFICADOR: {fel.CertifierName}").Bold().FontSize(8.0f);
-                        col.Item().Text($"NIT: {fel.CertifierNit}").Bold().FontSize(8.0f);
+                        col.Item().AlignCenter().Text("SUJETO A PAGOS TRIMESTRALES ISR")
+                        .ExtraBold()
+                        .FontSize(8.8f);
+
+                        col.Item().Text($"CERTIFICADOR: {fel.CertifierName}")
+                            .FontSize(7.2f);
+
+                        col.Item().Text($"NIT: {fel.CertifierNit}")
+                            .FontSize(7.2f);
                     });
                 });
             }).GeneratePdf();
