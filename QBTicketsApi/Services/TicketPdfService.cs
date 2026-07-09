@@ -80,55 +80,53 @@ namespace QBTicketsApi.Services
 
                         Space(col, 3);
 
-                        col.Item().AlignCenter().Text("INNOVACIONES AGRÍCOLAS DE GUATEMALA").Bold().FontSize(8.2f);
-                        col.Item().AlignCenter().Text("INNOVACIONES AGRÍCOLAS DE GUATEMALA, S.A.").Bold().FontSize(6.4f);
-                        col.Item().AlignCenter().Text("NIT: 120074427").Bold().FontSize(6.8f);
-                        col.Item().AlignCenter().Text("CARRETERA INTERAMERICANA, ZONA 0, ALDEA").FontSize(6.3f);
-                        col.Item().AlignCenter().Text("TIUCAL, ASUNCIÓN MITA, JUTIAPA").FontSize(6.3f);
+                        col.Item().AlignCenter().Text("INNOVACIONES AGRÍCOLAS DE GUATEMALA").Bold().FontSize(9.0f);
+                        col.Item().AlignCenter().Text("INNOVACIONES AGRÍCOLAS DE GUATEMALA, S.A.").Bold().FontSize(7.0f);
+                        col.Item().AlignCenter().Text("NIT: 120074427").Bold().FontSize(7.5f);
+                        col.Item().AlignCenter().Text("CARRETERA INTERAMERICANA, ZONA 0, ALDEA").FontSize(7.5f);
+                        col.Item().AlignCenter().Text("TIUCAL, ASUNCIÓN MITA, JUTIAPA").FontSize(7.0f);
 
                         Space(col, 5);
 
-                        col.Item().AlignCenter().Text("FACTURA").Bold().FontSize(9.5f);
+                        col.Item().AlignCenter().Text("FACTURA").Bold().FontSize(10.5f);
 
                         Space(col, 3);
 
-                        col.Item().AlignCenter().Text($"Serie: {fel.Serie}").Bold().FontSize(6.8f);
-                        col.Item().AlignCenter().Text($"Número de DTE: {fel.DteNumber}").Bold().FontSize(6.8f);
+                        col.Item().AlignCenter().Text($"Serie: {fel.Serie}").Bold().FontSize(7.5f);
+                        col.Item().AlignCenter().Text($"Número de DTE: {fel.DteNumber}").Bold().FontSize(7.5f);
 
                         Space(col, 4);
 
-                        col.Item().AlignCenter().Text("No. Autorización:").Bold().FontSize(7.2f);
-                        col.Item().AlignCenter().Text(fel.AuthorizationNumber).Bold().FontSize(6.2f);
+                        col.Item().AlignCenter().Text("No. Autorización:").Bold().FontSize(8.0f);
+                        col.Item().AlignCenter().Text(fel.AuthorizationNumber).Bold().FontSize(6.8f);
 
                         Space(col, 3);
 
                         col.Item().AlignCenter().Text($"Fecha de Certificación: {certDateGuatemala:dd/MM/yyyy, HH:mm:ss}").Bold().FontSize(6.8f);
-                        col.Item().AlignCenter().Text($"FECHA DE EMISIÓN: {date}").Bold().FontSize(6.8f);
+                        col.Item().AlignCenter().Text($"FECHA DE EMISIÓN: {date}").Bold().FontSize(7.5f);
 
                         Space(col, 3);
 
                         col.Item().Row(row =>
                         {
-                            row.ConstantItem(13, Unit.Millimetre).Text("NIT:").Bold().FontSize(7.0f);
-                            row.RelativeItem().Text(customerNit).FontSize(7.0f);
+                            row.ConstantItem(14, Unit.Millimetre).Text("NIT:").Bold().FontSize(7.7f);
+                            row.RelativeItem().Text(customerNit).FontSize(7.7f);
                         });
+
+                        Space(col, 2);
 
                         col.Item().Row(row =>
                         {
-                            row.ConstantItem(13, Unit.Millimetre).Text("NOMBRE:").Bold().FontSize(7.0f);
-                            row.RelativeItem().Text(customer.ToUpper()).FontSize(7.0f);
+                            row.ConstantItem(18, Unit.Millimetre).Text("NOMBRE:").Bold().FontSize(7.7f);
+                            row.RelativeItem().Text(customer.ToUpper()).FontSize(7.7f);
                         });
+
+                        Space(col, 2);
 
                         col.Item().Row(row =>
                         {
-                            row.ConstantItem(25, Unit.Millimetre).Text("TIPO VENTA:").Bold().FontSize(7.0f);
-                            row.RelativeItem().Text(tipoVentaTexto).FontSize(7.0f);
-                        });
-
-                        col.Item().Row(row =>
-                        {
-                            row.ConstantItem(25, Unit.Millimetre).Text("Factura No.:").Bold().FontSize(7.0f);
-                            row.RelativeItem().Text($"#{docNumber}").FontSize(7.0f);
+                            row.ConstantItem(24, Unit.Millimetre).Text("TIPO VENTA:").Bold().FontSize(7.7f);
+                            row.RelativeItem().Text(tipoVentaTexto).FontSize(7.7f);
                         });
 
                         Space(col, 4);
