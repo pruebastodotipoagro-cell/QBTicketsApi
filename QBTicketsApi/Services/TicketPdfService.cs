@@ -53,7 +53,7 @@ namespace QBTicketsApi.Services
 
             var logoPath = Path.Combine(AppContext.BaseDirectory, "Assets", "Logo INNOVACIONES.jpeg");
 
-            float pageHeight = Math.Min(420, Math.Max(210, 185 + (lines.Count * 9)));
+            float pageHeight = 260;
 
             return Document.Create(container =>
             {
@@ -171,7 +171,21 @@ namespace QBTicketsApi.Services
                             }
                         });
 
-                        Space(col, 7);
+                        // Espacio tipo plantilla antes del TOTAL.
+                        // Mientras menos productos haya, más espacio deja.
+                        // Mientras más productos haya, menos espacio deja para evitar 2 páginas.
+                        float blankSpaceBeforeTotal = lines.Count switch
+                        {
+                            <= 1 => 45,
+                            2 => 38,
+                            3 => 32,
+                            4 => 26,
+                            5 => 20,
+                            6 => 14,
+                            _ => 8
+                        };
+
+                        Space(col, blankSpaceBeforeTotal);
                         SolidLine(col);
 
                         col.Item().Row(row =>
