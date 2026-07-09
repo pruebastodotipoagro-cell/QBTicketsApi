@@ -109,24 +109,38 @@ namespace QBTicketsApi.Services
 
                         col.Item().Row(row =>
                         {
-                            row.ConstantItem(14, Unit.Millimetre).Text("NIT:").Bold().FontSize(7.7f);
-                            row.RelativeItem().Text(customerNit).FontSize(7.7f);
+                            row.ConstantItem(15, Unit.Millimetre)
+                                .Text("NIT:")
+                                .Bold()
+                                .FontSize(7.7f);
+
+                            row.RelativeItem()
+                                .Text(customerNit)
+                                .FontSize(7.7f);
                         });
 
-                        Space(col, 2);
-
-                        col.Item().Row(row =>
+                        col.Item().PaddingTop(1).Row(row =>
                         {
-                            row.ConstantItem(18, Unit.Millimetre).Text("NOMBRE:").Bold().FontSize(7.7f);
-                            row.RelativeItem().Text(customer.ToUpper()).FontSize(7.7f);
+                            row.ConstantItem(20, Unit.Millimetre)
+                                .Text("NOMBRE:")
+                                .Bold()
+                                .FontSize(7.7f);
+
+                            row.RelativeItem()
+                                .Text(customer.ToUpper())
+                                .FontSize(7.7f);
                         });
 
-                        Space(col, 2);
-
-                        col.Item().Row(row =>
+                        col.Item().PaddingTop(1).Row(row =>
                         {
-                            row.ConstantItem(24, Unit.Millimetre).Text("TIPO VENTA:").Bold().FontSize(7.7f);
-                            row.RelativeItem().Text(tipoVentaTexto).FontSize(7.7f);
+                            row.ConstantItem(24, Unit.Millimetre)
+                                .Text("TIPO VENTA:")
+                                .Bold()
+                                .FontSize(7.7f);
+
+                            row.RelativeItem()
+                                .Text(tipoVentaTexto)
+                                .FontSize(7.7f);
                         });
 
                         Space(col, 4);
@@ -194,14 +208,14 @@ namespace QBTicketsApi.Services
 
                         Space(col, 4);
 
-                        col.Item().Text("TOTAL DE LA FACTURA EN LETRAS:").Bold().FontSize(8.0f);
-                        col.Item().Text(NumberToWords(total).ToUpper()).FontSize(7.0f);
+                        col.Item().Text("TOTAL DE LA FACTURA EN LETRAS:").Bold().FontSize(8.8f);
+                        col.Item().Text(NumberToWords(total).ToUpper()).Bold().FontSize(7.8f);
 
                         Space(col, 5);
 
                         col.Item().AlignCenter().Text("SUJETO A PAGOS TRIMESTRALES ISR").Bold().FontSize(8.0f);
-                        col.Item().Text($"CERTIFICADOR: {fel.CertifierName}").Bold().FontSize(7.0f);
-                        col.Item().Text($"NIT: {fel.CertifierNit}").Bold().FontSize(7.0f);
+                        col.Item().Text($"CERTIFICADOR: {fel.CertifierName}").Bold().FontSize(8.0f);
+                        col.Item().Text($"NIT: {fel.CertifierNit}").Bold().FontSize(8.0f);
                     });
                 });
             }).GeneratePdf();
