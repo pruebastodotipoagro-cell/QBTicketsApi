@@ -57,52 +57,43 @@ namespace QBTicketsApi.Services
             {
                 container.Page(page =>
                 {
-                    page.Size(80, 190, Unit.Millimetre);
+                    page.Size(80, 220, Unit.Millimetre);
                     page.MarginHorizontal(3, Unit.Millimetre);
                     page.MarginTop(0, Unit.Millimetre);
                     page.MarginBottom(3, Unit.Millimetre);
-                    page.DefaultTextStyle(x => x.FontSize(7.2f).FontFamily("Arial"));
+                    page.DefaultTextStyle(x => x.FontSize(7.6f).FontFamily("Arial"));
 
                     page.Content().Column(col =>
                     {
-                        col.Spacing(1);
+                        col.Spacing(3);
 
                         if (File.Exists(logoPath))
                         {
                             col.Item()
                                 .AlignCenter()
-                                .Width(38, Unit.Millimetre)
+                                .Width(42, Unit.Millimetre)
                                 .Image(logoPath)
                                 .FitWidth();
                         }
 
-                        Space(col, 2);
-
-                        col.Item().AlignCenter().Text("INNOVACIONES AGRÍCOLAS DE GUATEMALA").Bold().FontSize(9.0f);
-                        col.Item().AlignCenter().Text("INNOVACIONES AGRÍCOLAS DE GUATEMALA, S.A.").Bold().FontSize(6.5f);
-                        col.Item().AlignCenter().Text("NIT: 120074427").Bold().FontSize(7.2f);
-                        col.Item().AlignCenter().Text("Carr. Interamericana, Zona 0, Aldea Tiucal").FontSize(6.5f);
-                        col.Item().AlignCenter().Text("Asunción Mita, Jutiapa").FontSize(6.5f);
-                        col.Item().AlignCenter().Text("Sujeto a pagos trimestrales ISR").Bold().FontSize(6.5f);
+                        col.Item().PaddingTop(3).AlignCenter().Text("INNOVACIONES AGRÍCOLAS DE GUATEMALA").Bold().FontSize(9.5f);
+                        col.Item().PaddingTop(2).AlignCenter().Text("INNOVACIONES AGRÍCOLAS DE GUATEMALA, S.A.").Bold().FontSize(6.8f);
+                        col.Item().PaddingTop(2).AlignCenter().Text("NIT: 120074427").Bold().FontSize(7.6f);
+                        col.Item().PaddingTop(2).AlignCenter().Text("Carr. Interamericana, Zona 0, Aldea Tiucal").FontSize(6.8f);
+                        col.Item().PaddingTop(1).AlignCenter().Text("Asunción Mita, Jutiapa").FontSize(6.8f);
+                        col.Item().PaddingTop(2).AlignCenter().Text("Sujeto a pagos trimestrales ISR").Bold().FontSize(6.8f);
 
                         Dashed(col);
 
-                        col.Item().AlignCenter().Text("FACTURA").Bold().FontSize(10.8f);
+                        col.Item().PaddingTop(2).AlignCenter().Text("FACTURA").Bold().FontSize(11.4f);
 
-                        Space(col, 2);
+                        col.Item().PaddingTop(4).Text($"Factura No.: #{docNumber}").Bold().FontSize(7.6f);
+                        col.Item().PaddingTop(2).Text($"Fecha emisión: {date}").FontSize(7.6f);
+                        col.Item().PaddingTop(2).Text($"Tipo de venta: {tipoVentaTexto}").Bold().FontSize(7.6f);
+                        col.Item().PaddingTop(3).Text($"NIT: {customerNit}").FontSize(7.6f);
+                        col.Item().PaddingTop(2).Text($"Cliente: {customer}").FontSize(7.6f);
 
-                        col.Item().Text($"Factura No.: #{docNumber}").Bold().FontSize(7.2f);
-                        col.Item().Text($"Fecha emisión: {date}").FontSize(7.2f);
-                        col.Item().Text($"Tipo de venta: {tipoVentaTexto}").Bold().FontSize(7.2f);
-
-                        Space(col, 1);
-
-                        col.Item().Text($"NIT: {customerNit}").FontSize(7.2f);
-                        col.Item().Text($"Cliente: {customer}").FontSize(7.2f);
-
-                        Space(col, 2);
-
-                        col.Item().Table(table =>
+                        col.Item().PaddingTop(5).Table(table =>
                         {
                             table.ColumnsDefinition(columns =>
                             {
@@ -114,14 +105,14 @@ namespace QBTicketsApi.Services
 
                             table.Header(header =>
                             {
-                                header.Cell().AlignCenter().Text("CANT").Bold().FontSize(6.4f);
-                                header.Cell().AlignCenter().Text("DETALLE").Bold().FontSize(6.4f);
-                                header.Cell().AlignRight().Text("Des.").Bold().FontSize(6.4f);
-                                header.Cell().AlignRight().Text("TOTAL").Bold().FontSize(6.4f);
+                                header.Cell().AlignCenter().Text("CANT").Bold().FontSize(6.7f);
+                                header.Cell().AlignCenter().Text("DETALLE").Bold().FontSize(6.7f);
+                                header.Cell().AlignRight().Text("Des.").Bold().FontSize(6.7f);
+                                header.Cell().AlignRight().Text("TOTAL").Bold().FontSize(6.7f);
 
                                 header.Cell()
                                     .ColumnSpan(4)
-                                    .PaddingTop(1)
+                                    .PaddingTop(2)
                                     .LineHorizontal(0.5f);
                             });
 
@@ -136,65 +127,52 @@ namespace QBTicketsApi.Services
                                 if (detail.TryGetProperty("ItemRef", out var itemRef))
                                     itemName = GetString(itemRef, "name", "Producto");
 
-                                table.Cell().PaddingTop(4).AlignCenter().Text(qty.ToString("N0")).FontSize(6.4f);
-                                table.Cell().PaddingTop(4).AlignCenter().Text(itemName.ToUpper()).Bold().FontSize(6.0f);
-                                table.Cell().PaddingTop(4).AlignRight().Text("0.00").FontSize(6.4f);
-                                table.Cell().PaddingTop(4).AlignRight().Text("Q " + amount.ToString("N2")).Bold().FontSize(6.4f);
+                                table.Cell().PaddingTop(5).AlignCenter().Text(qty.ToString("N0")).FontSize(6.7f);
+                                table.Cell().PaddingTop(5).AlignCenter().Text(itemName.ToUpper()).Bold().FontSize(6.35f);
+                                table.Cell().PaddingTop(5).AlignRight().Text("0.00").FontSize(6.7f);
+                                table.Cell().PaddingTop(5).AlignRight().Text("Q " + amount.ToString("N2")).Bold().FontSize(6.7f);
                             }
                         });
 
                         Dashed(col);
 
-                        col.Item().Row(row =>
+                        col.Item().PaddingTop(3).Row(row =>
                         {
-                            row.RelativeItem().AlignLeft().Text("TOTAL:").Bold().FontSize(8.2f);
-                            row.RelativeItem().AlignRight().Text("Q " + total.ToString("N2")).Bold().FontSize(8.2f);
+                            row.RelativeItem().AlignLeft().Text("TOTAL:").Bold().FontSize(8.6f);
+                            row.RelativeItem().AlignRight().Text("Q " + total.ToString("N2")).Bold().FontSize(8.6f);
                         });
 
-                        Space(col, 2);
-
                         col.Item()
+                            .PaddingTop(5)
                             .AlignCenter()
                             .Text(NumberToWords(total).ToUpper())
                             .Bold()
-                            .FontSize(7.2f);
+                            .FontSize(7.6f);
 
                         Dashed(col);
 
-                        col.Item().Text($"Serie: {fel.Serie}").Bold().FontSize(7.2f);
-                        Space(col, 1);
-                        col.Item().Text($"Número de DTE: {fel.DteNumber}").Bold().FontSize(7.2f);
+                        col.Item().PaddingTop(3).Text($"Serie: {fel.Serie}").Bold().FontSize(7.6f);
+                        col.Item().PaddingTop(3).Text($"Número de DTE: {fel.DteNumber}").Bold().FontSize(7.6f);
 
-                        Space(col, 3);
+                        col.Item().PaddingTop(6).AlignCenter().Text("No. Autorización:").Bold().FontSize(7.6f);
+                        col.Item().PaddingTop(2).AlignCenter().Text(fel.AuthorizationNumber).Bold().FontSize(6.7f);
 
-                        col.Item().AlignCenter().Text("No. Autorización:").Bold().FontSize(7.2f);
-                        col.Item().AlignCenter().Text(fel.AuthorizationNumber).Bold().FontSize(6.4f);
-
-                        Space(col, 3);
-
-                        col.Item().Text($"Fecha de Certificación: {certDateGuatemala:dd/MM/yyyy HH:mm}").Bold().FontSize(7.2f);
-                        Space(col, 1);
-                        col.Item().Text($"CERTIFICADOR: {fel.CertifierName}").Bold().FontSize(7.2f);
-                        Space(col, 1);
-                        col.Item().Text($"NIT: {fel.CertifierNit}").Bold().FontSize(7.2f);
+                        col.Item().PaddingTop(6).Text($"Fecha de Certificación: {certDateGuatemala:dd/MM/yyyy HH:mm}").Bold().FontSize(7.6f);
+                        col.Item().PaddingTop(3).Text($"CERTIFICADOR: {fel.CertifierName}").Bold().FontSize(7.6f);
+                        col.Item().PaddingTop(3).Text($"NIT: {fel.CertifierNit}").Bold().FontSize(7.6f);
 
                         Dashed(col);
 
-                        col.Item().AlignCenter().Text("¡Gracias por su preferencia!").Bold().FontSize(8.2f);
-                        col.Item().AlignCenter().Text("Contribuyendo al desarrollo agrícola de Guatemala.").Bold().FontSize(6.4f);
+                        col.Item().PaddingTop(4).AlignCenter().Text("¡Gracias por su preferencia!").Bold().FontSize(8.6f);
+                        col.Item().PaddingTop(2).AlignCenter().Text("Contribuyendo al desarrollo agrícola de Guatemala.").Bold().FontSize(6.7f);
                     });
                 });
             }).GeneratePdf();
         }
 
-        private static void Space(ColumnDescriptor col, float millimetres)
-        {
-            col.Item().Height(millimetres, Unit.Millimetre);
-        }
-
         private static void Dashed(ColumnDescriptor col)
         {
-            col.Item().PaddingVertical(2).Row(row =>
+            col.Item().PaddingVertical(4).Row(row =>
             {
                 const float dashWidth = 1f;
                 const float gapWidth = 1f;
