@@ -55,7 +55,7 @@ namespace QBTicketsApi.Services
         /// Certifica un documento ante Megaprint/SAT, o devuelve la certificación
         /// ya existente si este QuickBooksId ya fue certificado antes (idempotencia).
         /// </summary>
-        public async Task<FelResult> CertifyAsync(string quickBooksId, string quickBooksJson, string saleType, string? nitOverride = null)
+        public async Task<FelResult> CertifyAsync(string quickBooksId, string quickBooksJson, string saleType, string? nitOverride = null, decimal descuento = 0)
         {
             var existing = await _db.Invoices
                 .FirstOrDefaultAsync(i => i.QuickBooksId == quickBooksId && i.IsCertified);
@@ -76,7 +76,7 @@ namespace QBTicketsApi.Services
             }
 
             // No existe todavía: certificamos de verdad contra Megaprint
-            var xmlSinFirmar = _xmlBuilder.BuildFactXml(quickBooksJson, nitOverride);
+            var xmlSinFirmar = _xmlBuilder.BuildFactXml(quickBooksJson, nitOverride, descuento);
             var token = await _megaprintService.SolicitarTokenAsync();
             var xmlFirmado = await _megaprintService.SolicitarFirmaAsync(xmlSinFirmar, token);
             var (xmlCertificado, uuid) = await _megaprintService.RegistrarDocumentoAsync(xmlFirmado, token);

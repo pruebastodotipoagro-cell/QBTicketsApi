@@ -22,7 +22,10 @@ namespace QBTicketsApi.Controllers
         }
 
         [HttpGet("{id}/pdf")]
-        public async Task<IActionResult> GetTicketPdf(string id, [FromQuery] string? nit = null)
+        public async Task<IActionResult> GetTicketPdf(
+    string id,
+    [FromQuery] string? nit = null,
+    [FromQuery] decimal descuento = 0)
         {
             var json = await _quickBooksService.GetSalesReceiptById(id);
 
@@ -34,12 +37,32 @@ namespace QBTicketsApi.Controllers
             if (string.IsNullOrWhiteSpace(json))
                 return NotFound("No se encontró el recibo.");
 
-            string saleType = json.Contains("SalesReceipt") ? "contado" : "credito";
-            var fel = await _felService.CertifyAsync(id, json, saleType, nit);
+            if (descuento < 0)
+                return BadRequest("El descuento no puede ser negativo.");
 
-            var pdf = _ticketPdfService.GenerateSalesReceiptPdf(json, fel, saleType);
+            string saleType = json.Contains("SalesReceipt")
+     ? "contado"
+     : "credito";
 
-            return File(pdf, "application/pdf", $"ticket-{id}.pdf");
+            var fel = await _felService.CertifyAsync(
+                id,
+                json,
+                saleType,
+                nit,
+                descuento
+            );
+
+            var pdf = _ticketPdfService.GenerateSalesReceiptPdf(
+                json,
+                fel,
+                saleType
+            );
+
+            return File(
+                pdf,
+                "application/pdf",
+                $"ticket-{id}.pdf"
+            );
         }
     }
 }

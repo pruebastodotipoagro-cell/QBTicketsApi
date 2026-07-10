@@ -12,7 +12,7 @@ namespace QBTicketsApi.Services
             _customerLookupService = customerLookupService;
         }
 
-        public string BuildFactXml(string quickBooksJson, string? nitOverride = null)
+        public string BuildFactXml(string quickBooksJson, string? nitOverride = null, decimal descuentoTotal = 0)
         {
             using var doc = JsonDocument.Parse(quickBooksJson);
             var query = doc.RootElement.GetProperty("QueryResponse");
@@ -28,7 +28,15 @@ namespace QBTicketsApi.Services
 
             string docNumber = GetString(qbDoc, "DocNumber", "SIN-NUMERO");
             string date = GetString(qbDoc, "TxnDate", DateTime.Now.ToString("yyyy-MM-dd"));
-            decimal total = GetDecimal(qbDoc, "TotalAmt");
+            decimal totalOriginal = GetDecimal(qbDoc, "TotalAmt");
+
+            if (descuentoTotal < 0)
+                descuentoTotal = 0;
+
+            if (descuentoTotal > totalOriginal)
+                descuentoTotal = totalOriginal;
+
+            decimal total = totalOriginal - descuentoTotal;
 
             string customerName = "Consumidor Final";
 
@@ -109,7 +117,7 @@ namespace QBTicketsApi.Services
                                     )
                                 ),
 
-                                BuildItems(qbDoc, dte),
+                                BuildItems(qbDoc, dte, descuentoTotal, totalOriginal),
 
                                 new XElement(dte + "Totales",
                                     new XElement(dte + "TotalImpuestos",
@@ -129,7 +137,7 @@ namespace QBTicketsApi.Services
             return xml.ToString(SaveOptions.DisableFormatting);
         }
 
-        private XElement BuildItems(JsonElement qbDoc, XNamespace dte)
+        private XElement BuildItems(JsonElement qbDoc, XNamespace dte, decimal descuentoTotal, decimal totalOriginal)
         {
             var items = new XElement(dte + "Items");
 
@@ -141,15 +149,28 @@ namespace QBTicketsApi.Services
                     continue;
 
                 decimal qty = GetDecimal(detail, "Qty", 1);
-                decimal amount = GetDecimal(line, "Amount");
-                decimal price = qty > 0 ? amount / qty : amount;
+                decimal amountOriginal = GetDecimal(line, "Amount");
+
+                decimal descuentoLinea = 0;
+
+                if (descuentoTotal > 0 && totalOriginal > 0)
+                {
+                    descuentoLinea = Math.Round((amountOriginal / totalOriginal) * descuentoTotal, 6);
+                }
+
+                decimal amountFinal = amountOriginal - descuentoLinea;
+
+                if (amountFinal < 0)
+                    amountFinal = 0;
+
+                decimal price = qty > 0 ? amountOriginal / qty : amountOriginal;
 
                 string desc = "Producto";
                 if (detail.TryGetProperty("ItemRef", out var itemRef))
                     desc = GetString(itemRef, "name", "Producto");
 
-                decimal taxable = Math.Round(amount / 1.12m, 6);
-                decimal tax = Math.Round(amount - taxable, 6);
+                decimal taxable = Math.Round(amountFinal / 1.12m, 6);
+                decimal tax = Math.Round(amountFinal - taxable, 6);
 
                 items.Add(
                     new XElement(dte + "Item",
@@ -160,8 +181,8 @@ namespace QBTicketsApi.Services
                         new XElement(dte + "UnidadMedida", "UNI"),
                         new XElement(dte + "Descripcion", desc),
                         new XElement(dte + "PrecioUnitario", price.ToString("0.000000")),
-                        new XElement(dte + "Precio", amount.ToString("0.000000")),
-                        new XElement(dte + "Descuento", "0.000000"),
+                        new XElement(dte + "Precio", amountOriginal.ToString("0.000000")),
+                        new XElement(dte + "Descuento", descuentoLinea.ToString("0.000000")),
 
                         new XElement(dte + "Impuestos",
                             new XElement(dte + "Impuesto",
@@ -172,7 +193,7 @@ namespace QBTicketsApi.Services
                             )
                         ),
 
-                        new XElement(dte + "Total", amount.ToString("0.000000"))
+                        new XElement(dte + "Total", amountFinal.ToString("0.000000"))
                     )
                 );
 
