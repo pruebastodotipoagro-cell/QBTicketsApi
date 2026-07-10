@@ -137,5 +137,110 @@ namespace QBTicketsApi.Services
 
             return (xmlCertificado, uuid);
         }
+
+        public async Task<string> RetornarNombreClienteAsync(string nit)
+        {
+            if (string.IsNullOrWhiteSpace(nit))
+                throw new Exception("Debe ingresar un NIT.");
+
+            nit = nit.Trim().Replace("-", "");
+
+            if (nit.Equals("CF", StringComparison.OrdinalIgnoreCase))
+                return "Consumidor Final";
+
+            string token = await SolicitarTokenAsync();
+
+            string url = _config["Megaprint:DatosClienteUrl"] ?? "";
+
+            if (string.IsNullOrWhiteSpace(url))
+                throw new Exception(
+                    "No está configurada la URL Megaprint:DatosClienteUrl."
+                );
+
+            var requestXml = new XElement(
+                "RetornaDatosClienteRequest",
+                new XElement("nit", nit)
+            );
+
+            string body =
+                new XDeclaration("1.0", "UTF-8", null) +
+                Environment.NewLine +
+                requestXml;
+
+            var client = _httpClientFactory.CreateClient();
+
+            var request = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = new StringContent(
+                    body,
+                    Encoding.UTF8,
+                    "application/xml"
+                )
+            };
+
+            request.Headers.Authorization =
+                new AuthenticationHeaderValue("Bearer", token);
+
+            var response = await client.SendAsync(request);
+            string responseText = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new Exception(
+                    "Error HTTP consultando NIT en Megaprint: " +
+                    responseText
+                );
+            }
+
+            XDocument doc;
+
+            try
+            {
+                doc = XDocument.Parse(responseText);
+            }
+            catch
+            {
+                throw new Exception(
+                    "Megaprint devolvió una respuesta inválida: " +
+                    responseText
+                );
+            }
+
+            string tipoRespuesta =
+                doc.Descendants()
+                   .FirstOrDefault(x => x.Name.LocalName == "tipo_respuesta")
+                   ?.Value ?? "1";
+
+            if (tipoRespuesta != "0")
+            {
+                string codigo =
+                    doc.Descendants()
+                       .FirstOrDefault(x => x.Name.LocalName == "cod_error")
+                       ?.Value ?? "sin código";
+
+                string descripcion =
+                    doc.Descendants()
+                       .FirstOrDefault(x => x.Name.LocalName == "desc_error")
+                       ?.Value ?? "No se pudo consultar el NIT.";
+
+                throw new Exception(
+                    $"Megaprint rechazó la consulta [{codigo}]: {descripcion}"
+                );
+            }
+
+            string nombre =
+                doc.Descendants()
+                   .FirstOrDefault(x => x.Name.LocalName == "nombre")
+                   ?.Value ?? "";
+
+            if (string.IsNullOrWhiteSpace(nombre))
+            {
+                throw new Exception(
+                    "Megaprint no devolvió el nombre asociado al NIT."
+                );
+            }
+
+            return nombre.Trim();
+        }
     }
 }
