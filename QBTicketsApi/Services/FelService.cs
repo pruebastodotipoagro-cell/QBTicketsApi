@@ -4,6 +4,7 @@ using System.Xml.Linq;
 using System.Linq;
 using QBTicketsApi.Database;
 using QBTicketsApi.Models;
+using QBTicketsApi.DTOs;
 
 namespace QBTicketsApi.Services
 {
@@ -38,36 +39,56 @@ namespace QBTicketsApi.Services
             _customerLookupService = customerLookupService;
         }
 
-        // Se mantiene temporalmente por compatibilidad; ya no se usa en el flujo real (paso 6 lo reemplaza)
-        public FelResult CertifyMock(string quickBooksId, string invoiceNumber)
+        public FelResult CertifyMock(
+            string quickBooksId,
+            string invoiceNumber)
         {
             return new FelResult
             {
                 Serie = "TEST",
-                DteNumber = string.IsNullOrWhiteSpace(invoiceNumber) ? quickBooksId : invoiceNumber,
-                AuthorizationNumber = Guid.NewGuid().ToString().ToUpper(),
+                DteNumber = string.IsNullOrWhiteSpace(invoiceNumber)
+                    ? quickBooksId
+                    : invoiceNumber,
+
+                AuthorizationNumber =
+                    Guid.NewGuid().ToString().ToUpperInvariant(),
+
                 CertificationDate = DateTime.UtcNow,
                 Qr = ""
             };
         }
 
         /// <summary>
-        /// Certifica un documento ante Megaprint/SAT, o devuelve la certificación
-        /// ya existente si este QuickBooksId ya fue certificado antes (idempotencia).
+        /// Nuevo método: certifica usando descuentos por línea de producto.
         /// </summary>
-        public async Task<FelResult> CertifyAsync(string quickBooksId, string quickBooksJson, string saleType, string? nitOverride = null, decimal descuento = 0)
+        public async Task<FelResult> CertifyAsync(
+            string quickBooksId,
+            string quickBooksJson,
+            string saleType,
+            string? nitOverride,
+            string? customerNameOverride,
+            IReadOnlyCollection<ItemDiscountRequest>? discounts)
         {
             var existing = await _db.Invoices
-                .FirstOrDefaultAsync(i => i.QuickBooksId == quickBooksId && i.IsCertified);
+                .FirstOrDefaultAsync(
+                    i => i.QuickBooksId == quickBooksId &&
+                         i.IsCertified
+                );
 
+            // Si ya fue certificado, no se vuelve a enviar a Megaprint.
             if (existing != null)
             {
                 return new FelResult
                 {
                     Serie = existing.FelSerie,
                     DteNumber = existing.FelDteNumber,
-                    AuthorizationNumber = existing.FelAuthorizationNumber,
-                    CertificationDate = existing.FelCertificationDate ?? DateTime.UtcNow,
+                    AuthorizationNumber =
+                        existing.FelAuthorizationNumber,
+
+                    CertificationDate =
+                        existing.FelCertificationDate
+                        ?? DateTime.UtcNow,
+
                     Qr = existing.FelQr,
                     CustomerNit = existing.CustomerNit,
                     CertifierName = existing.FelCertifierName,
@@ -75,39 +96,101 @@ namespace QBTicketsApi.Services
                 };
             }
 
-            // No existe todavía: certificamos de verdad contra Megaprint
-            var xmlSinFirmar = _xmlBuilder.BuildFactXml(quickBooksJson, nitOverride, descuento);
-            var token = await _megaprintService.SolicitarTokenAsync();
-            var xmlFirmado = await _megaprintService.SolicitarFirmaAsync(xmlSinFirmar, token);
-            var (xmlCertificado, uuid) = await _megaprintService.RegistrarDocumentoAsync(xmlFirmado, token);
+            discounts ??=
+                new List<ItemDiscountRequest>();
 
-            var (serie, numero) = ExtractSerieYNumero(uuid);
-            var (certifierName, certifierNit) = ExtractCertificador(xmlCertificado);
-            var certificationDate = DateTime.UtcNow;
+            ValidarDescuentos(discounts);
 
-            var (docNumber, customerName, total, issueDate) = ParseResumen(quickBooksJson);
-            var customerNit = !string.IsNullOrWhiteSpace(nitOverride)
-                ? nitOverride
-                : _customerLookupService.GetNit(customerName);
-            if (string.IsNullOrWhiteSpace(customerNit)) customerNit = "CF";
+            /*
+             * Construimos el XML aplicando el descuento solamente
+             * a las líneas seleccionadas.
+             */
+            string xmlSinFirmar =
+                _xmlBuilder.BuildFactXml(
+                    quickBooksJson,
+                    nitOverride,
+                    customerNameOverride,
+                    discounts
+                );
+
+            string token =
+                await _megaprintService.SolicitarTokenAsync();
+
+            string xmlFirmado =
+                await _megaprintService.SolicitarFirmaAsync(
+                    xmlSinFirmar,
+                    token
+                );
+
+            var registro =
+                await _megaprintService.RegistrarDocumentoAsync(
+                    xmlFirmado,
+                    token
+                );
+
+            string xmlCertificado =
+                registro.xmlCertificado;
+
+            string uuid =
+                registro.uuid;
+
+            var serieNumero =
+                ExtractSerieYNumero(uuid);
+
+            string serie =
+                serieNumero.serie;
+
+            string numero =
+                serieNumero.numero;
+
+            var certificador =
+                ExtractCertificador(xmlCertificado);
+
+            string certifierName =
+                certificador.certifierName;
+
+            string certifierNit =
+                certificador.certifierNit;
+
+            DateTime certificationDate =
+                DateTime.UtcNow;
+
+            var resumen =
+                ParseResumen(
+                    quickBooksJson,
+                    discounts,
+                    customerNameOverride
+                );
+
+            string customerNit =
+                ObtenerNitCliente(
+                    nitOverride,
+                    resumen.customerName
+                );
 
             var invoice = new Invoice
             {
                 QuickBooksId = quickBooksId,
-                InvoiceNumber = docNumber,
-                CustomerName = customerName,
+                InvoiceNumber = resumen.docNumber,
+                CustomerName = resumen.customerName,
                 CustomerNit = customerNit,
-                IssueDate = issueDate,
-                Total = total,
+                IssueDate = resumen.issueDate,
+
+                // Guardamos el total final después del descuento.
+                Total = resumen.totalFinal,
+
                 SaleType = saleType,
                 Status = "certified",
+
                 FelSerie = serie,
                 FelDteNumber = numero,
                 FelAuthorizationNumber = uuid,
                 FelCertificationDate = certificationDate,
                 FelQr = "",
+
                 FelCertifierName = certifierName,
                 FelCertifierNit = certifierNit,
+
                 IsCertified = true
             };
 
@@ -127,36 +210,169 @@ namespace QBTicketsApi.Services
             };
         }
 
-        // Serie = primeros 8 caracteres hex del UUID.
-        // Numero = valor decimal de los caracteres 9-16 del UUID (sin guiones), según el Manual de Implementación 2.0 de Megaprint.
-        private static (string serie, string numero) ExtractSerieYNumero(string uuid)
+        /*
+         * Método temporal para que el controlador anterior siga compilando.
+         * Cuando cambiemos TicketPdfController al nuevo POST,
+         * este método se podrá eliminar.
+         */
+        public Task<FelResult> CertifyAsync(
+            string quickBooksId,
+            string quickBooksJson,
+            string saleType,
+            string? nitOverride = null,
+            decimal descuento = 0)
         {
-            string clean = uuid.Replace("-", "");
-            string serie = clean.Length >= 8 ? clean.Substring(0, 8) : clean;
+            if (descuento < 0)
+            {
+                throw new Exception(
+                    "El descuento no puede ser negativo."
+                );
+            }
+
+            if (descuento > 0)
+            {
+                throw new Exception(
+                    "El descuento general ya no está permitido. " +
+                    "Debe aplicarse a un producto específico."
+                );
+            }
+
+            return CertifyAsync(
+                quickBooksId,
+                quickBooksJson,
+                saleType,
+                nitOverride,
+                null,
+                new List<ItemDiscountRequest>()
+            );
+        }
+
+        private static void ValidarDescuentos(
+            IReadOnlyCollection<ItemDiscountRequest> discounts)
+        {
+            var lineIds =
+                new HashSet<string>(
+                    StringComparer.OrdinalIgnoreCase
+                );
+
+            foreach (var discount in discounts)
+            {
+                if (discount == null)
+                {
+                    continue;
+                }
+
+                string lineId =
+                    discount.LineId?.Trim() ?? "";
+
+                if (string.IsNullOrWhiteSpace(lineId))
+                {
+                    throw new Exception(
+                        "Todo descuento debe indicar el LineId."
+                    );
+                }
+
+                if (discount.Amount < 0)
+                {
+                    throw new Exception(
+                        $"El descuento de la línea {lineId} " +
+                        "no puede ser negativo."
+                    );
+                }
+
+                if (!lineIds.Add(lineId))
+                {
+                    throw new Exception(
+                        $"La línea {lineId} está repetida " +
+                        "en la lista de descuentos."
+                    );
+                }
+            }
+        }
+
+        private string ObtenerNitCliente(
+            string? nitOverride,
+            string customerName)
+        {
+            string customerNit;
+
+            if (!string.IsNullOrWhiteSpace(nitOverride))
+            {
+                customerNit =
+                    nitOverride.Trim().Replace("-", "");
+            }
+            else
+            {
+                customerNit =
+                    _customerLookupService.GetNit(customerName);
+            }
+
+            if (string.IsNullOrWhiteSpace(customerNit))
+            {
+                customerNit = "CF";
+            }
+
+            return customerNit;
+        }
+
+        private static (
+            string serie,
+            string numero
+        ) ExtractSerieYNumero(string uuid)
+        {
+            string clean =
+                (uuid ?? "").Replace("-", "");
+
+            string serie =
+                clean.Length >= 8
+                    ? clean.Substring(0, 8)
+                    : clean;
+
             string numero = "";
 
             if (clean.Length >= 16)
             {
-                string hexNumero = clean.Substring(8, 8);
-                numero = Convert.ToInt64(hexNumero, 16).ToString();
+                string hexNumero =
+                    clean.Substring(8, 8);
+
+                numero =
+                    Convert.ToInt64(
+                        hexNumero,
+                        16
+                    )
+                    .ToString();
             }
 
             return (serie, numero);
         }
 
-        // Extrae el nombre y NIT del certificador reales desde el XML ya certificado por Megaprint,
-        // en vez de dejarlos fijos como texto en el ticket.
-        private static (string certifierName, string certifierNit) ExtractCertificador(string xmlCertificado)
+        private static (
+            string certifierName,
+            string certifierNit
+        ) ExtractCertificador(string xmlCertificado)
         {
             try
             {
-                var doc = XDocument.Parse(xmlCertificado);
+                var doc =
+                    XDocument.Parse(xmlCertificado);
 
-                string name = doc.Descendants()
-                    .FirstOrDefault(e => e.Name.LocalName == "NombreCertificador")?.Value ?? "";
+                string name =
+                    doc.Descendants()
+                        .FirstOrDefault(
+                            e => e.Name.LocalName ==
+                                 "NombreCertificador"
+                        )
+                        ?.Value
+                    ?? "";
 
-                string nit = doc.Descendants()
-                    .FirstOrDefault(e => e.Name.LocalName == "NITCertificador")?.Value ?? "";
+                string nit =
+                    doc.Descendants()
+                        .FirstOrDefault(
+                            e => e.Name.LocalName ==
+                                 "NITCertificador"
+                        )
+                        ?.Value
+                    ?? "";
 
                 return (name, nit);
             }
@@ -166,34 +382,139 @@ namespace QBTicketsApi.Services
             }
         }
 
-        private static (string docNumber, string customerName, decimal total, DateTime issueDate) ParseResumen(string quickBooksJson)
+        private static (
+            string docNumber,
+            string customerName,
+            decimal totalOriginal,
+            decimal discountTotal,
+            decimal totalFinal,
+            DateTime issueDate
+        ) ParseResumen(
+            string quickBooksJson,
+            IReadOnlyCollection<ItemDiscountRequest> discounts,
+            string? customerNameOverride)
         {
-            using var doc = JsonDocument.Parse(quickBooksJson);
-            var query = doc.RootElement.GetProperty("QueryResponse");
+            using var doc =
+                JsonDocument.Parse(quickBooksJson);
+
+            var query =
+                doc.RootElement.GetProperty(
+                    "QueryResponse"
+                );
 
             JsonElement qbDoc;
-            if (query.TryGetProperty("Invoice", out var invoices))
+
+            if (query.TryGetProperty(
+                "Invoice",
+                out var invoices))
+            {
                 qbDoc = invoices[0];
-            else if (query.TryGetProperty("SalesReceipt", out var receipts))
+            }
+            else if (query.TryGetProperty(
+                "SalesReceipt",
+                out var receipts))
+            {
                 qbDoc = receipts[0];
+            }
             else
-                throw new Exception("No se encontró Invoice ni SalesReceipt.");
+            {
+                throw new Exception(
+                    "No se encontró Invoice ni SalesReceipt."
+                );
+            }
 
-            string docNumber = qbDoc.TryGetProperty("DocNumber", out var dn) ? dn.GetString() ?? "" : "";
+            string docNumber = "";
 
-            string customerName = "Consumidor Final";
-            if (qbDoc.TryGetProperty("CustomerRef", out var customerRef) &&
-                customerRef.TryGetProperty("name", out var name))
-                customerName = name.GetString() ?? "Consumidor Final";
+            if (qbDoc.TryGetProperty(
+                    "DocNumber",
+                    out var docNumberElement))
+            {
+                docNumber =
+                    docNumberElement.GetString() ?? "";
+            }
 
-            decimal total = qbDoc.TryGetProperty("TotalAmt", out var totalEl) && totalEl.TryGetDecimal(out var t) ? t : 0;
+            string customerName =
+                "Consumidor Final";
 
-            DateTime issueDate = qbDoc.TryGetProperty("TxnDate", out var txnDateEl) &&
-                                 DateTime.TryParse(txnDateEl.GetString(), out var parsedDate)
-                ? DateTime.SpecifyKind(parsedDate, DateTimeKind.Utc)
-                : DateTime.UtcNow;
+            if (qbDoc.TryGetProperty(
+                    "CustomerRef",
+                    out var customerRef) &&
+                customerRef.TryGetProperty(
+                    "name",
+                    out var nameElement))
+            {
+                customerName =
+                    nameElement.GetString()
+                    ?? "Consumidor Final";
+            }
 
-            return (docNumber, customerName, total, issueDate);
+            if (!string.IsNullOrWhiteSpace(
+                customerNameOverride))
+            {
+                customerName =
+                    customerNameOverride.Trim();
+            }
+
+            decimal totalOriginal = 0;
+
+            if (qbDoc.TryGetProperty(
+                    "TotalAmt",
+                    out var totalElement))
+            {
+                totalElement.TryGetDecimal(
+                    out totalOriginal
+                );
+            }
+
+            decimal discountTotal =
+                discounts
+                    .Where(x => x != null)
+                    .Sum(x => x.Amount);
+
+            if (discountTotal < 0)
+            {
+                discountTotal = 0;
+            }
+
+            if (discountTotal > totalOriginal)
+            {
+                throw new Exception(
+                    "El descuento total supera el total " +
+                    "del documento."
+                );
+            }
+
+            decimal totalFinal =
+                totalOriginal - discountTotal;
+
+            DateTime issueDate;
+
+            if (qbDoc.TryGetProperty(
+                    "TxnDate",
+                    out var txnDateElement) &&
+                DateTime.TryParse(
+                    txnDateElement.GetString(),
+                    out var parsedDate))
+            {
+                issueDate =
+                    DateTime.SpecifyKind(
+                        parsedDate,
+                        DateTimeKind.Utc
+                    );
+            }
+            else
+            {
+                issueDate = DateTime.UtcNow;
+            }
+
+            return (
+                docNumber,
+                customerName,
+                totalOriginal,
+                discountTotal,
+                totalFinal,
+                issueDate
+            );
         }
     }
 }
