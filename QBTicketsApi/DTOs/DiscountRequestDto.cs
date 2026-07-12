@@ -10,6 +10,7 @@
     {
         public string? Nit { get; set; }
         public string? CustomerName { get; set; }
+        public bool CertifyFel { get; set; } = true;
 
         public List<ItemDiscountRequest> Discounts { get; set; } =
             new List<ItemDiscountRequest>();

@@ -22,16 +22,25 @@ namespace QBTicketsApi.Controllers
             _felService = felService;
         }
 
-        // Impresión normal, sin descuentos por producto.
-        // GET /api/invoices/{id}/pdf?nit=CF
+        // GET /api/invoices/{id}/pdf?nit=CF&certifyFel=true
         [HttpGet("{id}/pdf")]
         public async Task<IActionResult> GetTicketPdf(
             string id,
-            [FromQuery] string? nit = null)
+            [FromQuery] string? nit = null,
+            [FromQuery] bool certifyFel = true)
         {
             try
             {
-                string json = await ObtenerDocumentoQuickBooks(id);
+                if (string.IsNullOrWhiteSpace(id))
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        error = "El ID del documento es obligatorio."
+                    });
+                }
+
+                string json = await ObtenerDocumentoQuickBooksAsync(id);
 
                 if (string.IsNullOrWhiteSpace(json))
                 {
@@ -42,15 +51,35 @@ namespace QBTicketsApi.Controllers
                     });
                 }
 
-                string saleType = json.Contains("\"SalesReceipt\"")
+                string saleType = EsReciboVenta(json)
                     ? "contado"
                     : "credito";
 
-                var fel = await _felService.CertifyAsync(
+                string nitFinal = LimpiarNit(nit);
+
+                if (!certifyFel)
+                {
+                    byte[] recibo =
+                        _ticketPdfService.GenerateUncertifiedReceiptPdf(
+                            json,
+                            saleType,
+                            nitFinal,
+                            null,
+                            Array.Empty<ItemDiscountRequest>()
+                        );
+
+                    return File(
+                        recibo,
+                        "application/pdf",
+                        $"recibo-{id}-no-certificado.pdf"
+                    );
+                }
+
+                FelResult fel = await _felService.CertifyAsync(
                     id,
                     json,
                     saleType,
-                    nit,
+                    nitFinal,
                     0m
                 );
 
@@ -77,24 +106,14 @@ namespace QBTicketsApi.Controllers
             }
         }
 
-        // Impresión y certificación con descuentos por producto.
         // POST /api/invoices/{id}/pdf-with-discounts
         [HttpPost("{id}/pdf-with-discounts")]
         public async Task<IActionResult> GetTicketPdfWithDiscounts(
             string id,
-            [FromBody] DiscountedTicketRequest request)
+            [FromBody] DiscountedTicketRequest? request)
         {
             try
             {
-                if (request == null)
-                {
-                    return BadRequest(new
-                    {
-                        success = false,
-                        error = "La solicitud está vacía."
-                    });
-                }
-
                 if (string.IsNullOrWhiteSpace(id))
                 {
                     return BadRequest(new
@@ -104,41 +123,32 @@ namespace QBTicketsApi.Controllers
                     });
                 }
 
-                if (request.Discounts == null)
+                if (request is null)
                 {
-                    request.Discounts =
-                        new List<ItemDiscountRequest>();
+                    return BadRequest(new
+                    {
+                        success = false,
+                        error = "La solicitud está vacía."
+                    });
                 }
 
-                foreach (var discount in request.Discounts)
+                List<ItemDiscountRequest> discounts =
+                    request.Discounts ?? new List<ItemDiscountRequest>();
+
+                string? errorDescuento =
+                    ValidarDescuentos(discounts);
+
+                if (!string.IsNullOrWhiteSpace(errorDescuento))
                 {
-                    if (discount == null)
+                    return BadRequest(new
                     {
-                        continue;
-                    }
-
-                    if (string.IsNullOrWhiteSpace(discount.LineId))
-                    {
-                        return BadRequest(new
-                        {
-                            success = false,
-                            error = "Todos los descuentos deben indicar el LineId."
-                        });
-                    }
-
-                    if (discount.Amount < 0)
-                    {
-                        return BadRequest(new
-                        {
-                            success = false,
-                            error =
-                                $"El descuento de la línea {discount.LineId} " +
-                                "no puede ser negativo."
-                        });
-                    }
+                        success = false,
+                        error = errorDescuento
+                    });
                 }
 
-                string json = await ObtenerDocumentoQuickBooks(id);
+                string json =
+                    await ObtenerDocumentoQuickBooksAsync(id);
 
                 if (string.IsNullOrWhiteSpace(json))
                 {
@@ -149,27 +159,45 @@ namespace QBTicketsApi.Controllers
                     });
                 }
 
-                string saleType = json.Contains("\"SalesReceipt\"")
+                string saleType = EsReciboVenta(json)
                     ? "contado"
                     : "credito";
 
-                string? nitFinal = string.IsNullOrWhiteSpace(request.Nit)
-                    ? "CF"
-                    : request.Nit.Trim().Replace("-", "");
+                string nitFinal =
+                    LimpiarNit(request.Nit);
 
                 string? nombreFiscal =
                     string.IsNullOrWhiteSpace(request.CustomerName)
                         ? null
                         : request.CustomerName.Trim();
 
-                var fel = await _felService.CertifyAsync(
-                    id,
-                    json,
-                    saleType,
-                    nitFinal,
-                    nombreFiscal,
-                    request.Discounts
-                );
+                if (!request.CertifyFel)
+                {
+                    byte[] recibo =
+                        _ticketPdfService.GenerateUncertifiedReceiptPdf(
+                            json,
+                            saleType,
+                            nitFinal,
+                            nombreFiscal,
+                            discounts
+                        );
+
+                    return File(
+                        recibo,
+                        "application/pdf",
+                        $"recibo-{id}-no-certificado.pdf"
+                    );
+                }
+
+                FelResult fel =
+                    await _felService.CertifyAsync(
+                        id,
+                        json,
+                        saleType,
+                        nitFinal,
+                        nombreFiscal,
+                        discounts
+                    );
 
                 byte[] pdf =
                     _ticketPdfService.GenerateSalesReceiptPdf(
@@ -177,7 +205,7 @@ namespace QBTicketsApi.Controllers
                         fel,
                         saleType,
                         nombreFiscal,
-                        request.Discounts
+                        discounts
                     );
 
                 return File(
@@ -196,26 +224,95 @@ namespace QBTicketsApi.Controllers
             }
         }
 
-        private async Task<string> ObtenerDocumentoQuickBooks(string id)
+        private async Task<string> ObtenerDocumentoQuickBooksAsync(
+            string id)
         {
-            string json =
+            string salesReceiptJson =
                 await _quickBooksService.GetSalesReceiptById(id);
 
-            if (string.IsNullOrWhiteSpace(json) ||
-                !json.Contains("\"SalesReceipt\""))
+            if (EsReciboVenta(salesReceiptJson))
             {
-                json =
-                    await _quickBooksService.GetInvoiceById(id);
+                return salesReceiptJson;
             }
 
-            if (string.IsNullOrWhiteSpace(json) ||
-                (!json.Contains("\"SalesReceipt\"") &&
-                 !json.Contains("\"Invoice\"")))
+            string invoiceJson =
+                await _quickBooksService.GetInvoiceById(id);
+
+            if (EsFacturaCredito(invoiceJson))
             {
-                return "";
+                return invoiceJson;
             }
 
-            return json;
+            return string.Empty;
+        }
+
+        private static bool EsReciboVenta(string? json)
+        {
+            return !string.IsNullOrWhiteSpace(json) &&
+                   json.Contains(
+                       "\"SalesReceipt\"",
+                       StringComparison.Ordinal
+                   );
+        }
+
+        private static bool EsFacturaCredito(string? json)
+        {
+            return !string.IsNullOrWhiteSpace(json) &&
+                   json.Contains(
+                       "\"Invoice\"",
+                       StringComparison.Ordinal
+                   );
+        }
+
+        private static string LimpiarNit(string? nit)
+        {
+            if (string.IsNullOrWhiteSpace(nit))
+            {
+                return "CF";
+            }
+
+            string nitLimpio =
+                nit.Trim().Replace("-", "");
+
+            return string.IsNullOrWhiteSpace(nitLimpio)
+                ? "CF"
+                : nitLimpio;
+        }
+
+        private static string? ValidarDescuentos(
+            IEnumerable<ItemDiscountRequest> discounts)
+        {
+            var lineasEncontradas =
+                new HashSet<string>(
+                    StringComparer.OrdinalIgnoreCase
+                );
+
+            foreach (ItemDiscountRequest discount in discounts)
+            {
+                string lineId =
+                    discount.LineId?.Trim() ?? string.Empty;
+
+                if (string.IsNullOrWhiteSpace(lineId))
+                {
+                    return "Todos los descuentos deben indicar el LineId.";
+                }
+
+                if (discount.Amount < 0)
+                {
+                    return
+                        $"El descuento de la línea {lineId} " +
+                        "no puede ser negativo.";
+                }
+
+                if (!lineasEncontradas.Add(lineId))
+                {
+                    return
+                        $"La línea {lineId} está repetida " +
+                        "en la lista de descuentos.";
+                }
+            }
+
+            return null;
         }
     }
 }

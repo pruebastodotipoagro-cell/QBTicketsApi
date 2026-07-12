@@ -537,6 +537,420 @@ namespace QBTicketsApi.Services
             }).GeneratePdf();
         }
 
+        public byte[] GenerateUncertifiedReceiptPdf(
+    string json,
+    string saleType,
+    string nit,
+    string customerNameOverride,
+    IReadOnlyCollection<ItemDiscountRequest> discounts)
+        {
+            using var doc = JsonDocument.Parse(json);
+
+            var queryResponse =
+                doc.RootElement.GetProperty("QueryResponse");
+
+            JsonElement receipt;
+
+            if (queryResponse.TryGetProperty(
+                "SalesReceipt",
+                out var salesReceipts))
+            {
+                receipt = salesReceipts[0];
+            }
+            else if (queryResponse.TryGetProperty(
+                "Invoice",
+                out var invoices))
+            {
+                receipt = invoices[0];
+            }
+            else
+            {
+                throw new Exception(
+                    "QuickBooks no devolvió SalesReceipt ni Invoice."
+                );
+            }
+
+            string docNumber =
+                GetString(receipt, "DocNumber", "SIN-NUMERO");
+
+            string rawDate =
+                GetString(
+                    receipt,
+                    "TxnDate",
+                    DateTime.Now.ToString("yyyy-MM-dd")
+                );
+
+            string date =
+                DateTime.TryParse(rawDate, out var parsedDate)
+                    ? parsedDate.ToString("dd/MM/yyyy")
+                    : rawDate;
+
+            string customerName = "Consumidor Final";
+
+            if (receipt.TryGetProperty(
+                "CustomerRef",
+                out var customerRef))
+            {
+                customerName =
+                    GetString(
+                        customerRef,
+                        "name",
+                        "Consumidor Final"
+                    );
+            }
+
+            if (!string.IsNullOrWhiteSpace(customerNameOverride))
+            {
+                customerName = customerNameOverride.Trim();
+            }
+
+            string customerNit =
+                string.IsNullOrWhiteSpace(nit)
+                    ? "CF"
+                    : nit.Trim();
+
+            if (customerNit.Equals(
+                "CF",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                customerName = "Consumidor Final";
+            }
+
+            var discountMap =
+                CrearMapaDescuentos(discounts);
+
+            var ticketLines =
+                ObtenerLineasTicket(
+                    receipt,
+                    discountMap
+                );
+
+            decimal subtotal =
+                ticketLines.Sum(x => x.Subtotal);
+
+            decimal descuentoTotal =
+                ticketLines.Sum(x => x.Discount);
+
+            decimal totalFinal =
+                ticketLines.Sum(x => x.FinalTotal);
+
+            string logoPath = Path.Combine(
+                AppContext.BaseDirectory,
+                "Assets",
+                "Logo INNOVACIONES.jpeg"
+            );
+
+            float pageHeight = 190;
+
+            return Document.Create(container =>
+            {
+                container.Page(page =>
+                {
+                    page.Size(
+                        80,
+                        pageHeight,
+                        Unit.Millimetre
+                    );
+
+                    page.MarginHorizontal(
+                        3,
+                        Unit.Millimetre
+                    );
+
+                    page.MarginTop(
+                        1,
+                        Unit.Millimetre
+                    );
+
+                    page.MarginBottom(
+                        3,
+                        Unit.Millimetre
+                    );
+
+                    page.DefaultTextStyle(
+                        x => x
+                            .FontFamily("Arial")
+                            .FontSize(7.8f)
+                    );
+
+                    page.Content().Column(col =>
+                    {
+                        col.Spacing(1);
+
+                        if (File.Exists(logoPath))
+                        {
+                            col.Item()
+                                .AlignCenter()
+                                .Width(30, Unit.Millimetre)
+                                .Image(logoPath)
+                                .FitWidth();
+                        }
+
+                        Space(col, 3);
+
+                        col.Item()
+                            .AlignCenter()
+                            .Text(
+                                "INNOVACIONES AGRÍCOLAS DE GUATEMALA"
+                            )
+                            .Bold()
+                            .FontSize(8.8f);
+
+                        col.Item()
+                            .AlignCenter()
+                            .Text(
+                                "CARRETERA INTERAMERICANA Z.0, ALDEA TIUCAL"
+                            )
+                            .FontSize(7.0f);
+
+                        Space(col, 4);
+
+                        col.Item()
+                            .AlignCenter()
+                            .Text("RECIBO")
+                            .Bold()
+                            .FontSize(10.5f);
+
+                        Space(col, 4);
+
+                        col.Item().Row(row =>
+                        {
+                            row.ConstantItem(
+                                    20,
+                                    Unit.Millimetre
+                                )
+                                .Text("FECHA:")
+                                .Bold();
+
+                            row.RelativeItem()
+                                .Text(date);
+                        });
+
+                        col.Item().Row(row =>
+                        {
+                            row.ConstantItem(
+                                    20,
+                                    Unit.Millimetre
+                                )
+                                .Text("CLIENTE:")
+                                .Bold();
+
+                            row.RelativeItem()
+                                .Text(customerName.ToUpper());
+                        });
+
+                        col.Item().Row(row =>
+                        {
+                            row.ConstantItem(
+                                    20,
+                                    Unit.Millimetre
+                                )
+                                .Text("NIT:")
+                                .Bold();
+
+                            row.RelativeItem()
+                                .Text(customerNit);
+                        });
+
+                        col.Item().Row(row =>
+                        {
+                            row.ConstantItem(
+                                    20,
+                                    Unit.Millimetre
+                                )
+                                .Text("CORRELATIVO:")
+                                .Bold();
+
+                            row.RelativeItem()
+                                .Text(docNumber);
+                        });
+
+                        Space(col, 4);
+
+                        col.Item().Table(table =>
+                        {
+                            table.ColumnsDefinition(columns =>
+                            {
+                                columns.ConstantColumn(
+                                    9,
+                                    Unit.Millimetre
+                                );
+
+                                columns.ConstantColumn(
+                                    39,
+                                    Unit.Millimetre
+                                );
+
+                                columns.ConstantColumn(
+                                    10,
+                                    Unit.Millimetre
+                                );
+
+                                columns.ConstantColumn(
+                                    16,
+                                    Unit.Millimetre
+                                );
+                            });
+
+                            table.Header(header =>
+                            {
+                                header.Cell()
+                                    .AlignCenter()
+                                    .Text("CANT")
+                                    .Bold()
+                                    .FontSize(6.7f);
+
+                                header.Cell()
+                                    .AlignCenter()
+                                    .Text("DETALLE")
+                                    .Bold()
+                                    .FontSize(6.7f);
+
+                                header.Cell()
+                                    .AlignRight()
+                                    .Text("DESC.")
+                                    .Bold()
+                                    .FontSize(6.7f);
+
+                                header.Cell()
+                                    .AlignRight()
+                                    .Text("TOTAL")
+                                    .Bold()
+                                    .FontSize(6.7f);
+
+                                header.Cell()
+                                    .ColumnSpan(4)
+                                    .PaddingTop(2)
+                                    .LineHorizontal(0.5f);
+                            });
+
+                            foreach (var line in ticketLines)
+                            {
+                                table.Cell()
+                                    .PaddingTop(4)
+                                    .AlignCenter()
+                                    .Text(line.Quantity.ToString("0.##"))
+                                    .FontSize(6.4f);
+
+                                table.Cell()
+                                    .PaddingTop(4)
+                                    .AlignCenter()
+                                    .Text(line.Description.ToUpper())
+                                    .Bold()
+                                    .FontSize(6.0f);
+
+                                table.Cell()
+                                    .PaddingTop(4)
+                                    .AlignRight()
+                                    .Text(line.Discount.ToString("N2"))
+                                    .FontSize(6.2f);
+
+                                table.Cell()
+                                    .PaddingTop(4)
+                                    .AlignRight()
+                                    .Text(line.FinalTotal.ToString("N2"))
+                                    .Bold()
+                                    .FontSize(6.2f);
+                            }
+                        });
+
+                        float blankSpace =
+                            ticketLines.Count switch
+                            {
+                                <= 1 => 28,
+                                2 => 23,
+                                3 => 18,
+                                4 => 13,
+                                _ => 8
+                            };
+
+                        Space(col, blankSpace);
+                        SolidLine(col);
+
+                        if (descuentoTotal > 0)
+                        {
+                            col.Item().Row(row =>
+                            {
+                                row.RelativeItem()
+                                    .AlignRight()
+                                    .Text("SUBTOTAL:")
+                                    .FontSize(7.4f);
+
+                                row.ConstantItem(
+                                        23,
+                                        Unit.Millimetre
+                                    )
+                                    .AlignRight()
+                                    .Text(
+                                        "Q " + subtotal.ToString("N2")
+                                    )
+                                    .FontSize(7.4f);
+                            });
+
+                            col.Item().Row(row =>
+                            {
+                                row.RelativeItem()
+                                    .AlignRight()
+                                    .Text("DESCUENTO:")
+                                    .FontSize(7.4f);
+
+                                row.ConstantItem(
+                                        23,
+                                        Unit.Millimetre
+                                    )
+                                    .AlignRight()
+                                    .Text(
+                                        "Q " +
+                                        descuentoTotal.ToString("N2")
+                                    )
+                                    .FontSize(7.4f);
+                            });
+                        }
+
+                        col.Item()
+                            .PaddingTop(1)
+                            .Row(row =>
+                            {
+                                row.RelativeItem()
+                                    .AlignRight()
+                                    .Text("TOTAL:")
+                                    .Bold()
+                                    .FontSize(8.5f);
+
+                                row.ConstantItem(
+                                        23,
+                                        Unit.Millimetre
+                                    )
+                                    .AlignRight()
+                                    .Text(
+                                        "Q " +
+                                        totalFinal.ToString("N2")
+                                    )
+                                    .Bold()
+                                    .FontSize(8.5f);
+                            });
+
+                        Space(col, 5);
+
+                        col.Item()
+                            .AlignCenter()
+                            .Text(
+                                "COMPROBANTE NO CERTIFICADO"
+                            )
+                            .Bold()
+                            .FontSize(7.5f);
+
+                        col.Item()
+                            .AlignCenter()
+                            .Text(
+                                "NO ES DOCUMENTO TRIBUTARIO ELECTRÓNICO"
+                            )
+                            .FontSize(6.5f);
+                    });
+                });
+            }).GeneratePdf();
+        }
+
         private static List<TicketLine> ObtenerLineasTicket(
             JsonElement receipt,
             IReadOnlyDictionary<string, decimal> discountMap)
