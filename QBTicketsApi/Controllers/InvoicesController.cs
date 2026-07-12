@@ -183,5 +183,36 @@ namespace QBTicketsApi.Controllers
                 customers = result
             });
         }
+
+        // GET /api/invoices/{id}/items
+        [HttpGet("{id}/items")]
+        public async Task<IActionResult> GetDocumentItems(string id)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(id))
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        error = "El ID del documento es obligatorio."
+                    });
+                }
+
+                var result =
+                    await _quickBooksService
+                        .GetDocumentItemsAsync(id);
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    error = ex.Message
+                });
+            }
+        }
     }
 }

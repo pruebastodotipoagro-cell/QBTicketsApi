@@ -272,6 +272,247 @@ namespace QBTicketsApi.Services
             return " WHERE " + string.Join(" AND ", condiciones);
         }
 
+        public async Task<InvoiceItemsResponseDto> GetDocumentItemsAsync(string id)
+        {
+            string json = await GetSalesReceiptById(id);
+            string saleType = "contado";
+
+            if (string.IsNullOrWhiteSpace(json) ||
+                !json.Contains("\"SalesReceipt\""))
+            {
+                json = await GetInvoiceById(id);
+                saleType = "credito";
+            }
+
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                throw new Exception(
+                    "No se encontró el documento en QuickBooks."
+                );
+            }
+
+            using var doc = JsonDocument.Parse(json);
+
+            if (!doc.RootElement.TryGetProperty(
+                "QueryResponse",
+                out var queryResponse))
+            {
+                throw new Exception(
+                    "QuickBooks no devolvió QueryResponse."
+                );
+            }
+
+            JsonElement documents;
+
+            if (saleType == "contado")
+            {
+                if (!queryResponse.TryGetProperty(
+                    "SalesReceipt",
+                    out documents) ||
+                    documents.GetArrayLength() == 0)
+                {
+                    throw new Exception(
+                        "No se encontró el recibo de venta."
+                    );
+                }
+            }
+            else
+            {
+                if (!queryResponse.TryGetProperty(
+                    "Invoice",
+                    out documents) ||
+                    documents.GetArrayLength() == 0)
+                {
+                    throw new Exception(
+                        "No se encontró la factura."
+                    );
+                }
+            }
+
+            JsonElement qbDocument = documents[0];
+
+            string quickBooksId =
+                qbDocument.TryGetProperty("Id", out var idElement)
+                    ? idElement.GetString() ?? id
+                    : id;
+
+            string invoiceNumber =
+                qbDocument.TryGetProperty("DocNumber", out var docNumber)
+                    ? docNumber.GetString() ?? quickBooksId
+                    : quickBooksId;
+
+            string customerName = "Consumidor Final";
+
+            if (qbDocument.TryGetProperty(
+                    "CustomerRef",
+                    out var customerRef) &&
+                customerRef.TryGetProperty(
+                    "name",
+                    out var customerNameElement))
+            {
+                customerName =
+                    customerNameElement.GetString()
+                    ?? "Consumidor Final";
+            }
+
+            var result = new InvoiceItemsResponseDto
+            {
+                QuickBooksId = quickBooksId,
+                InvoiceNumber = invoiceNumber,
+                CustomerName = customerName,
+                SaleType = saleType
+            };
+
+            if (qbDocument.TryGetProperty(
+                "Line",
+                out var lines))
+            {
+                foreach (var line in lines.EnumerateArray())
+                {
+                    if (!line.TryGetProperty(
+                        "DetailType",
+                        out var detailTypeElement))
+                    {
+                        continue;
+                    }
+
+                    string detailType =
+                        detailTypeElement.GetString() ?? "";
+
+                    if (detailType != "SalesItemLineDetail")
+                    {
+                        continue;
+                    }
+
+                    if (!line.TryGetProperty(
+                        "SalesItemLineDetail",
+                        out var detail))
+                    {
+                        continue;
+                    }
+
+                    string lineId =
+                        line.TryGetProperty("Id", out var lineIdElement)
+                            ? lineIdElement.GetString() ?? ""
+                            : "";
+
+                    string description =
+                        line.TryGetProperty(
+                            "Description",
+                            out var descriptionElement)
+                            ? descriptionElement.GetString() ?? ""
+                            : "";
+
+                    string itemId = "";
+                    string itemName = "";
+
+                    if (detail.TryGetProperty(
+                            "ItemRef",
+                            out var itemRef))
+                    {
+                        itemId =
+                            itemRef.TryGetProperty(
+                                "value",
+                                out var itemValue)
+                                ? itemValue.GetString() ?? ""
+                                : "";
+
+                        itemName =
+                            itemRef.TryGetProperty(
+                                "name",
+                                out var itemNameElement)
+                                ? itemNameElement.GetString() ?? ""
+                                : "";
+                    }
+
+                    if (string.IsNullOrWhiteSpace(description))
+                    {
+                        description = itemName;
+                    }
+
+                    decimal quantity = 1m;
+
+                    if (detail.TryGetProperty(
+                            "Qty",
+                            out var quantityElement))
+                    {
+                        quantityElement.TryGetDecimal(
+                            out quantity
+                        );
+                    }
+
+                    decimal unitPrice = 0m;
+
+                    if (detail.TryGetProperty(
+                            "UnitPrice",
+                            out var unitPriceElement))
+                    {
+                        unitPriceElement.TryGetDecimal(
+                            out unitPrice
+                        );
+                    }
+
+                    decimal amount = 0m;
+
+                    if (line.TryGetProperty(
+                            "Amount",
+                            out var amountElement))
+                    {
+                        amountElement.TryGetDecimal(
+                            out amount
+                        );
+                    }
+
+                    decimal currentDiscount = 0m;
+
+                    if (detail.TryGetProperty(
+                            "DiscountAmt",
+                            out var discountElement))
+                    {
+                        discountElement.TryGetDecimal(
+                            out currentDiscount
+                        );
+                    }
+
+                    decimal subtotal =
+                        quantity * unitPrice;
+
+                    if (subtotal <= 0)
+                    {
+                        subtotal = amount + currentDiscount;
+                    }
+
+                    result.Items.Add(new InvoiceItemDto
+                    {
+                        LineId = lineId,
+                        ItemId = itemId,
+                        Description = description,
+                        Quantity = quantity,
+                        UnitPrice = unitPrice,
+                        Subtotal = subtotal,
+                        CurrentDiscount = currentDiscount,
+                        Total = amount
+                    });
+                }
+            }
+
+            result.Subtotal =
+                result.Items.Sum(x => x.Subtotal);
+
+            result.DiscountTotal =
+                result.Items.Sum(x => x.CurrentDiscount);
+
+            result.Total =
+                qbDocument.TryGetProperty(
+                    "TotalAmt",
+                    out var totalElement) &&
+                totalElement.TryGetDecimal(out var total)
+                    ? total
+                    : result.Items.Sum(x => x.Total);
+
+            return result;
+        }
+
         private class QuickBooksTokenResponse
         {
             [JsonPropertyName("access_token")]
