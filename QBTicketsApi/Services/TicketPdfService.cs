@@ -952,8 +952,8 @@ namespace QBTicketsApi.Services
         }
 
         private static List<TicketLine> ObtenerLineasTicket(
-            JsonElement receipt,
-            IReadOnlyDictionary<string, decimal> discountMap)
+    JsonElement receipt,
+    IReadOnlyDictionary<string, decimal> discountMap)
         {
             var result = new List<TicketLine>();
 
@@ -1013,30 +1013,48 @@ namespace QBTicketsApi.Services
                     );
                 }
 
-                string description =
-                    GetString(line, "Description", "");
+                /*
+                 * Primero toma el nombre real del producto
+                 * configurado en QuickBooks:
+                 * SalesItemLineDetail -> ItemRef -> name
+                 */
+                string productName = "";
 
-                if (string.IsNullOrWhiteSpace(description) &&
-                    detail.TryGetProperty(
-                        "ItemRef",
-                        out var itemRef))
+                if (detail.TryGetProperty(
+                    "ItemRef",
+                    out var itemRef))
                 {
-                    description = GetString(
-                        itemRef,
-                        "name",
-                        "Producto"
-                    );
+                    productName =
+                        GetString(
+                            itemRef,
+                            "name",
+                            ""
+                        );
                 }
 
-                if (string.IsNullOrWhiteSpace(description))
+                /*
+                 * Solo si QuickBooks no devuelve el nombre del artículo,
+                 * utiliza la descripción escrita en la línea.
+                 */
+                if (string.IsNullOrWhiteSpace(productName))
                 {
-                    description = "Producto";
+                    productName =
+                        GetString(
+                            line,
+                            "Description",
+                            ""
+                        );
+                }
+
+                if (string.IsNullOrWhiteSpace(productName))
+                {
+                    productName = "Producto";
                 }
 
                 result.Add(new TicketLine
                 {
                     LineId = lineId,
-                    Description = description,
+                    Description = productName.Trim(),
                     Quantity = quantity,
                     Subtotal = subtotal,
                     Discount = discount,

@@ -89,20 +89,25 @@ namespace QBTicketsApi.Controllers
                 }
 
                 FelResult fel = await _felService.CertifyAsync(
-                    id,
-                    json,
-                    saleType,
-                    nitFinal,
-                    nombreFiscal,
-                    Array.Empty<ItemDiscountRequest>()
-                );
+                id,
+                json,
+                saleType,
+                nitFinal,
+                nombreFiscal,
+                Array.Empty<ItemDiscountRequest>()
+            );
+
+                string nombreFinal =
+                    string.IsNullOrWhiteSpace(fel.CustomerName)
+                        ? "Consumidor Final"
+                        : fel.CustomerName.Trim();
 
                 byte[] pdf =
                     _ticketPdfService.GenerateSalesReceiptPdf(
                         json,
                         fel,
                         saleType,
-                        nombreFiscal,
+                        nombreFinal,
                         Array.Empty<ItemDiscountRequest>()
                     );
 
@@ -204,7 +209,6 @@ namespace QBTicketsApi.Controllers
                         $"recibo-{id}-no-certificado.pdf"
                     );
                 }
-
                 FelResult fel =
                     await _felService.CertifyAsync(
                         id,
@@ -213,14 +217,19 @@ namespace QBTicketsApi.Controllers
                         nitFinal,
                         nombreFiscal,
                         discounts
-                    );
+                       );
+
+                string nombreFinal =
+                    string.IsNullOrWhiteSpace(fel.CustomerName)
+                        ? "Consumidor Final"
+                        : fel.CustomerName.Trim();
 
                 byte[] pdf =
                     _ticketPdfService.GenerateSalesReceiptPdf(
                         json,
                         fel,
                         saleType,
-                        nombreFiscal,
+                        nombreFinal,
                         discounts
                     );
 
