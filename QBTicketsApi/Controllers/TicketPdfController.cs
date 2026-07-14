@@ -25,9 +25,10 @@ namespace QBTicketsApi.Controllers
         // GET /api/invoices/{id}/pdf?nit=CF&certifyFel=true
         [HttpGet("{id}/pdf")]
         public async Task<IActionResult> GetTicketPdf(
-            string id,
-            [FromQuery] string? nit = null,
-            [FromQuery] bool certifyFel = true)
+     string id,
+     [FromQuery] string? nit = null,
+     [FromQuery] string? customerName = null,
+     [FromQuery] bool certifyFel = true)
         {
             try
             {
@@ -57,6 +58,18 @@ namespace QBTicketsApi.Controllers
 
                 string nitFinal = LimpiarNit(nit);
 
+                string? nombreFiscal =
+                    string.IsNullOrWhiteSpace(customerName)
+                        ? null
+                        : customerName.Trim();
+
+                if (nitFinal.Equals(
+                    "CF",
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    nombreFiscal = "Consumidor Final";
+                }
+
                 if (!certifyFel)
                 {
                     byte[] recibo =
@@ -64,7 +77,7 @@ namespace QBTicketsApi.Controllers
                             json,
                             saleType,
                             nitFinal,
-                            null,
+                            nombreFiscal,
                             Array.Empty<ItemDiscountRequest>()
                         );
 
@@ -80,14 +93,17 @@ namespace QBTicketsApi.Controllers
                     json,
                     saleType,
                     nitFinal,
-                    0m
+                    nombreFiscal,
+                    Array.Empty<ItemDiscountRequest>()
                 );
 
                 byte[] pdf =
                     _ticketPdfService.GenerateSalesReceiptPdf(
                         json,
                         fel,
-                        saleType
+                        saleType,
+                        nombreFiscal,
+                        Array.Empty<ItemDiscountRequest>()
                     );
 
                 return File(
