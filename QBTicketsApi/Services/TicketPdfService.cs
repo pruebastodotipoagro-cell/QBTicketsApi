@@ -325,13 +325,19 @@ namespace QBTicketsApi.Services
                         {
                             table.ColumnsDefinition(columns =>
                             {
+                                // Total disponible: 74 mm.
                                 columns.ConstantColumn(
-                                    9,
+                                    8,
                                     Unit.Millimetre
                                 );
 
                                 columns.ConstantColumn(
-                                    39,
+                                    28,
+                                    Unit.Millimetre
+                                );
+
+                                columns.ConstantColumn(
+                                    13,
                                     Unit.Millimetre
                                 );
 
@@ -341,7 +347,7 @@ namespace QBTicketsApi.Services
                                 );
 
                                 columns.ConstantColumn(
-                                    16,
+                                    15,
                                     Unit.Millimetre
                                 );
                             });
@@ -352,28 +358,34 @@ namespace QBTicketsApi.Services
                                     .AlignCenter()
                                     .Text("CANT")
                                     .Bold()
-                                    .FontSize(6.7f);
+                                    .FontSize(6.2f);
 
                                 header.Cell()
                                     .AlignCenter()
                                     .Text("DETALLE")
                                     .Bold()
-                                    .FontSize(6.7f);
+                                    .FontSize(6.2f);
 
                                 header.Cell()
                                     .AlignRight()
-                                    .Text("Des.")
+                                    .Text("P. UNIT.")
                                     .Bold()
-                                    .FontSize(6.7f);
+                                    .FontSize(5.8f);
+
+                                header.Cell()
+                                    .AlignRight()
+                                    .Text("DES.")
+                                    .Bold()
+                                    .FontSize(5.8f);
 
                                 header.Cell()
                                     .AlignRight()
                                     .Text("TOTAL")
                                     .Bold()
-                                    .FontSize(6.7f);
+                                    .FontSize(6.2f);
 
                                 header.Cell()
-                                    .ColumnSpan(4)
+                                    .ColumnSpan(5)
                                     .PaddingTop(2)
                                     .LineHorizontal(0.5f);
                             });
@@ -389,27 +401,33 @@ namespace QBTicketsApi.Services
                                             CultureInfo.InvariantCulture
                                         )
                                     )
-                                    .FontSize(6.4f);
+                                    .FontSize(6.0f);
 
                                 table.Cell()
                                     .PaddingTop(4)
                                     .AlignCenter()
                                     .Text(line.Description.ToUpper())
                                     .Bold()
-                                    .FontSize(6.0f);
+                                    .FontSize(5.6f);
+
+                                table.Cell()
+                                    .PaddingTop(4)
+                                    .AlignRight()
+                                    .Text(line.UnitPrice.ToString("N2"))
+                                    .FontSize(5.8f);
 
                                 table.Cell()
                                     .PaddingTop(4)
                                     .AlignRight()
                                     .Text(line.Discount.ToString("N2"))
-                                    .FontSize(6.2f);
+                                    .FontSize(5.8f);
 
                                 table.Cell()
                                     .PaddingTop(4)
                                     .AlignRight()
                                     .Text(line.FinalTotal.ToString("N2"))
                                     .Bold()
-                                    .FontSize(6.2f);
+                                    .FontSize(5.8f);
                             }
                         });
 
@@ -772,12 +790,17 @@ namespace QBTicketsApi.Services
                             table.ColumnsDefinition(columns =>
                             {
                                 columns.ConstantColumn(
-                                    9,
+                                    8,
                                     Unit.Millimetre
                                 );
 
                                 columns.ConstantColumn(
-                                    39,
+                                    28,
+                                    Unit.Millimetre
+                                );
+
+                                columns.ConstantColumn(
+                                    13,
                                     Unit.Millimetre
                                 );
 
@@ -787,7 +810,7 @@ namespace QBTicketsApi.Services
                                 );
 
                                 columns.ConstantColumn(
-                                    16,
+                                    15,
                                     Unit.Millimetre
                                 );
                             });
@@ -798,28 +821,34 @@ namespace QBTicketsApi.Services
                                     .AlignCenter()
                                     .Text("CANT")
                                     .Bold()
-                                    .FontSize(6.7f);
+                                    .FontSize(6.2f);
 
                                 header.Cell()
                                     .AlignCenter()
                                     .Text("DETALLE")
                                     .Bold()
-                                    .FontSize(6.7f);
+                                    .FontSize(6.2f);
+
+                                header.Cell()
+                                    .AlignRight()
+                                    .Text("P. UNIT.")
+                                    .Bold()
+                                    .FontSize(5.8f);
 
                                 header.Cell()
                                     .AlignRight()
                                     .Text("DESC.")
                                     .Bold()
-                                    .FontSize(6.7f);
+                                    .FontSize(5.8f);
 
                                 header.Cell()
                                     .AlignRight()
                                     .Text("TOTAL")
                                     .Bold()
-                                    .FontSize(6.7f);
+                                    .FontSize(6.2f);
 
                                 header.Cell()
-                                    .ColumnSpan(4)
+                                    .ColumnSpan(5)
                                     .PaddingTop(2)
                                     .LineHorizontal(0.5f);
                             });
@@ -829,28 +858,39 @@ namespace QBTicketsApi.Services
                                 table.Cell()
                                     .PaddingTop(4)
                                     .AlignCenter()
-                                    .Text(line.Quantity.ToString("0.##"))
-                                    .FontSize(6.4f);
+                                    .Text(
+                                        line.Quantity.ToString(
+                                            "0.##",
+                                            CultureInfo.InvariantCulture
+                                        )
+                                    )
+                                    .FontSize(6.0f);
 
                                 table.Cell()
                                     .PaddingTop(4)
                                     .AlignCenter()
                                     .Text(line.Description.ToUpper())
                                     .Bold()
-                                    .FontSize(6.0f);
+                                    .FontSize(5.6f);
+
+                                table.Cell()
+                                    .PaddingTop(4)
+                                    .AlignRight()
+                                    .Text(line.UnitPrice.ToString("N2"))
+                                    .FontSize(5.8f);
 
                                 table.Cell()
                                     .PaddingTop(4)
                                     .AlignRight()
                                     .Text(line.Discount.ToString("N2"))
-                                    .FontSize(6.2f);
+                                    .FontSize(5.8f);
 
                                 table.Cell()
                                     .PaddingTop(4)
                                     .AlignRight()
                                     .Text(line.FinalTotal.ToString("N2"))
                                     .Bold()
-                                    .FontSize(6.2f);
+                                    .FontSize(5.8f);
                             }
                         });
 
@@ -985,7 +1025,15 @@ namespace QBTicketsApi.Services
                 }
 
                 decimal subtotal =
-                    GetDecimal(line, "Amount");
+                GetDecimal(line, "Amount");
+
+                decimal unitPrice =
+                    GetDecimal(detail, "UnitPrice", 0);
+
+                if (unitPrice <= 0 && quantity > 0)
+                {
+                    unitPrice = subtotal / quantity;
+                }
 
                 decimal discount = 0;
 
@@ -1056,6 +1104,7 @@ namespace QBTicketsApi.Services
                     LineId = lineId,
                     Description = productName.Trim(),
                     Quantity = quantity,
+                    UnitPrice = unitPrice,
                     Subtotal = subtotal,
                     Discount = discount,
                     FinalTotal = subtotal - discount
@@ -1296,10 +1345,17 @@ namespace QBTicketsApi.Services
         private class TicketLine
         {
             public string LineId { get; set; } = "";
+
             public string Description { get; set; } = "";
+
             public decimal Quantity { get; set; }
+
+            public decimal UnitPrice { get; set; }
+
             public decimal Subtotal { get; set; }
+
             public decimal Discount { get; set; }
+
             public decimal FinalTotal { get; set; }
         }
     }

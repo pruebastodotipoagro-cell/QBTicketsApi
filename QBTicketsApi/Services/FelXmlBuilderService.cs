@@ -1,7 +1,7 @@
-﻿using System.Globalization;
+﻿using QBTicketsApi.DTOs;
+using System.Globalization;
 using System.Text.Json;
 using System.Xml.Linq;
-using QBTicketsApi.DTOs;
 
 namespace QBTicketsApi.Services
 {
@@ -21,20 +21,25 @@ namespace QBTicketsApi.Services
             string? customerNameOverride = null,
             IReadOnlyCollection<ItemDiscountRequest>? discounts = null)
         {
-            using var doc = JsonDocument.Parse(quickBooksJson);
+            using JsonDocument doc =
+                JsonDocument.Parse(quickBooksJson);
 
-            var query =
-                doc.RootElement.GetProperty("QueryResponse");
+            JsonElement query =
+                doc.RootElement.GetProperty(
+                    "QueryResponse"
+                );
 
             JsonElement qbDoc;
 
-            if (query.TryGetProperty("Invoice", out var invoices))
+            if (query.TryGetProperty(
+                "Invoice",
+                out JsonElement invoices))
             {
                 qbDoc = invoices[0];
             }
             else if (query.TryGetProperty(
                 "SalesReceipt",
-                out var receipts))
+                out JsonElement receipts))
             {
                 qbDoc = receipts[0];
             }
@@ -45,17 +50,23 @@ namespace QBTicketsApi.Services
                 );
             }
 
-            string date = GetString(
-                qbDoc,
-                "TxnDate",
-                DateTime.Now.ToString("yyyy-MM-dd")
-            );
+            string date =
+                GetString(
+                    qbDoc,
+                    "TxnDate",
+                    DateTime.Now.ToString("yyyy-MM-dd")
+                );
 
             decimal totalOriginal =
-                GetDecimal(qbDoc, "TotalAmt");
+                GetDecimal(
+                    qbDoc,
+                    "TotalAmt"
+                );
 
-            var discountMap =
-                CrearMapaDescuentos(discounts);
+            Dictionary<string, decimal> discountMap =
+                CrearMapaDescuentos(
+                    discounts
+                );
 
             ValidarDescuentosPorLinea(
                 qbDoc,
@@ -88,7 +99,9 @@ namespace QBTicketsApi.Services
 
             string customerNit =
                 !string.IsNullOrWhiteSpace(nitOverride)
-                    ? nitOverride.Trim()
+                    ? nitOverride
+                        .Trim()
+                        .Replace("-", "")
                     : _customerLookupService
                         .GetNit(customerName);
 
@@ -101,7 +114,8 @@ namespace QBTicketsApi.Services
                 "CF",
                 StringComparison.OrdinalIgnoreCase))
             {
-                customerName = "Consumidor Final";
+                customerName =
+                    "Consumidor Final";
             }
 
             decimal montoGravableTotal =
@@ -127,237 +141,245 @@ namespace QBTicketsApi.Services
             string fechaHoraEmision =
                 BuildFechaHoraEmision(date);
 
-            var xml = new XDocument(
-                new XDeclaration("1.0", "UTF-8", "no"),
-
-                new XElement(
-                    dte + "GTDocumento",
-
-                    new XAttribute("Version", "0.1"),
-
-                    new XAttribute(
-                        XNamespace.Xmlns + "dte",
-                        dte
-                    ),
-
-                    new XAttribute(
-                        XNamespace.Xmlns + "xsi",
-                        xsi
+            var xml =
+                new XDocument(
+                    new XDeclaration(
+                        "1.0",
+                        "UTF-8",
+                        "no"
                     ),
 
                     new XElement(
-                        dte + "SAT",
+                        dte + "GTDocumento",
 
                         new XAttribute(
-                            "ClaseDocumento",
-                            "dte"
+                            "Version",
+                            "0.1"
+                        ),
+
+                        new XAttribute(
+                            XNamespace.Xmlns + "dte",
+                            dte
+                        ),
+
+                        new XAttribute(
+                            XNamespace.Xmlns + "xsi",
+                            xsi
                         ),
 
                         new XElement(
-                            dte + "DTE",
+                            dte + "SAT",
 
                             new XAttribute(
-                                "ID",
-                                "DatosCertificados"
+                                "ClaseDocumento",
+                                "dte"
                             ),
 
                             new XElement(
-                                dte + "DatosEmision",
+                                dte + "DTE",
 
                                 new XAttribute(
                                     "ID",
-                                    "DatosEmision"
+                                    "DatosCertificados"
                                 ),
 
                                 new XElement(
-                                    dte + "DatosGenerales",
+                                    dte + "DatosEmision",
 
                                     new XAttribute(
-                                        "CodigoMoneda",
-                                        "GTQ"
-                                    ),
-
-                                    new XAttribute(
-                                        "FechaHoraEmision",
-                                        fechaHoraEmision
-                                    ),
-
-                                    new XAttribute(
-                                        "Tipo",
-                                        "FACT"
-                                    )
-                                ),
-
-                                new XElement(
-                                    dte + "Emisor",
-
-                                    new XAttribute(
-                                        "AfiliacionIVA",
-                                        "GEN"
-                                    ),
-
-                                    new XAttribute(
-                                        "CodigoEstablecimiento",
-                                        "1"
-                                    ),
-
-                                    new XAttribute(
-                                        "CorreoEmisor",
-                                        ""
-                                    ),
-
-                                    new XAttribute(
-                                        "NITEmisor",
-                                        "120074427"
-                                    ),
-
-                                    new XAttribute(
-                                        "NombreComercial",
-                                        "INNOVACIONES AGRICOLAS"
-                                    ),
-
-                                    new XAttribute(
-                                        "NombreEmisor",
-                                        "INNOVACIONES AGRICOLAS DE GUATEMALA, SOCIEDAD ANONIMA"
+                                        "ID",
+                                        "DatosEmision"
                                     ),
 
                                     new XElement(
-                                        dte + "DireccionEmisor",
-
-                                        new XElement(
-                                            dte + "Direccion",
-                                            "ALDEA TIUCAL"
-                                        ),
-
-                                        new XElement(
-                                            dte + "CodigoPostal",
-                                            "22005"
-                                        ),
-
-                                        new XElement(
-                                            dte + "Municipio",
-                                            "ASUNCION MITA"
-                                        ),
-
-                                        new XElement(
-                                            dte + "Departamento",
-                                            "JUTIAPA"
-                                        ),
-
-                                        new XElement(
-                                            dte + "Pais",
-                                            "GT"
-                                        )
-                                    )
-                                ),
-
-                                new XElement(
-                                    dte + "Receptor",
-
-                                    new XAttribute(
-                                        "CorreoReceptor",
-                                        ""
-                                    ),
-
-                                    new XAttribute(
-                                        "IDReceptor",
-                                        customerNit
-                                    ),
-
-                                    new XAttribute(
-                                        "NombreReceptor",
-                                        customerName
-                                    ),
-
-                                    new XElement(
-                                        dte + "DireccionReceptor",
-
-                                        new XElement(
-                                            dte + "Direccion",
-                                            "CIUDAD"
-                                        ),
-
-                                        new XElement(
-                                            dte + "CodigoPostal",
-                                            "01001"
-                                        ),
-
-                                        new XElement(
-                                            dte + "Municipio",
-                                            "GUATEMALA"
-                                        ),
-
-                                        new XElement(
-                                            dte + "Departamento",
-                                            "GUATEMALA"
-                                        ),
-
-                                        new XElement(
-                                            dte + "Pais",
-                                            "GT"
-                                        )
-                                    )
-                                ),
-
-                                new XElement(
-                                    dte + "Frases",
-
-                                    new XElement(
-                                        dte + "Frase",
+                                        dte + "DatosGenerales",
 
                                         new XAttribute(
-                                            "CodigoEscenario",
+                                            "CodigoMoneda",
+                                            "GTQ"
+                                        ),
+
+                                        new XAttribute(
+                                            "FechaHoraEmision",
+                                            fechaHoraEmision
+                                        ),
+
+                                        new XAttribute(
+                                            "Tipo",
+                                            "FACT"
+                                        )
+                                    ),
+
+                                    new XElement(
+                                        dte + "Emisor",
+
+                                        new XAttribute(
+                                            "AfiliacionIVA",
+                                            "GEN"
+                                        ),
+
+                                        new XAttribute(
+                                            "CodigoEstablecimiento",
                                             "1"
                                         ),
 
                                         new XAttribute(
-                                            "TipoFrase",
-                                            "1"
-                                        )
-                                    )
-                                ),
+                                            "CorreoEmisor",
+                                            ""
+                                        ),
 
-                                BuildItems(
-                                    qbDoc,
-                                    dte,
-                                    discountMap
-                                ),
+                                        new XAttribute(
+                                            "NITEmisor",
+                                            "120074427"
+                                        ),
 
-                                new XElement(
-                                    dte + "Totales",
+                                        new XAttribute(
+                                            "NombreComercial",
+                                            "INNOVACIONES AGRÍCOLAS DE GUATEMALA"
+                                        ),
 
-                                    new XElement(
-                                        dte + "TotalImpuestos",
+                                        new XAttribute(
+                                            "NombreEmisor",
+                                            "INNOVACIONES AGRÍCOLAS DE GUATEMALA, SOCIEDAD ANÓNIMA"
+                                        ),
 
                                         new XElement(
-                                            dte + "TotalImpuesto",
+                                            dte + "DireccionEmisor",
 
-                                            new XAttribute(
-                                                "NombreCorto",
-                                                "IVA"
+                                            new XElement(
+                                                dte + "Direccion",
+                                                "CARRETERA INTERAMERICANA, ZONA 0, ALDEA TIUCAL, ASUNCIÓN MITA, JUTIAPA"
                                             ),
 
-                                            new XAttribute(
-                                                "TotalMontoImpuesto",
-                                                FormatoDecimal(
-                                                    ivaTotal
-                                                )
+                                            new XElement(
+                                                dte + "CodigoPostal",
+                                                "22005"
+                                            ),
+
+                                            new XElement(
+                                                dte + "Municipio",
+                                                "ASUNCIÓN MITA"
+                                            ),
+
+                                            new XElement(
+                                                dte + "Departamento",
+                                                "JUTIAPA"
+                                            ),
+
+                                            new XElement(
+                                                dte + "Pais",
+                                                "GT"
                                             )
                                         )
                                     ),
 
                                     new XElement(
-                                        dte + "GranTotal",
-                                        FormatoDecimal(
-                                            totalFinal
+                                        dte + "Receptor",
+
+                                        new XAttribute(
+                                            "CorreoReceptor",
+                                            ""
+                                        ),
+
+                                        new XAttribute(
+                                            "IDReceptor",
+                                            customerNit
+                                        ),
+
+                                        new XAttribute(
+                                            "NombreReceptor",
+                                            customerName
+                                        ),
+
+                                        new XElement(
+                                            dte + "DireccionReceptor",
+
+                                            new XElement(
+                                                dte + "Direccion",
+                                                "CIUDAD"
+                                            ),
+
+                                            new XElement(
+                                                dte + "CodigoPostal",
+                                                "01001"
+                                            ),
+
+                                            new XElement(
+                                                dte + "Municipio",
+                                                "GUATEMALA"
+                                            ),
+
+                                            new XElement(
+                                                dte + "Departamento",
+                                                "GUATEMALA"
+                                            ),
+
+                                            new XElement(
+                                                dte + "Pais",
+                                                "GT"
+                                            )
+                                        )
+                                    ),
+
+                                    new XElement(
+                                        dte + "Frases",
+
+                                        new XElement(
+                                            dte + "Frase",
+
+                                            new XAttribute(
+                                                "CodigoEscenario",
+                                                "1"
+                                            ),
+
+                                            new XAttribute(
+                                                "TipoFrase",
+                                                "1"
+                                            )
+                                        )
+                                    ),
+
+                                    BuildItems(
+                                        qbDoc,
+                                        dte,
+                                        discountMap
+                                    ),
+
+                                    new XElement(
+                                        dte + "Totales",
+
+                                        new XElement(
+                                            dte + "TotalImpuestos",
+
+                                            new XElement(
+                                                dte + "TotalImpuesto",
+
+                                                new XAttribute(
+                                                    "NombreCorto",
+                                                    "IVA"
+                                                ),
+
+                                                new XAttribute(
+                                                    "TotalMontoImpuesto",
+                                                    FormatoDecimal(
+                                                        ivaTotal
+                                                    )
+                                                )
+                                            )
+                                        ),
+
+                                        new XElement(
+                                            dte + "GranTotal",
+                                            FormatoDecimal(
+                                                totalFinal
+                                            )
                                         )
                                     )
                                 )
                             )
                         )
                     )
-                )
-            );
+                );
 
             return xml.ToString(
                 SaveOptions.DisableFormatting
@@ -370,25 +392,43 @@ namespace QBTicketsApi.Services
             IReadOnlyDictionary<string, decimal> discountMap)
         {
             var items =
-                new XElement(dte + "Items");
+                new XElement(
+                    dte + "Items"
+                );
 
             int lineNumber = 1;
 
-            foreach (var line in
-                qbDoc.GetProperty("Line").EnumerateArray())
+            if (!qbDoc.TryGetProperty(
+                "Line",
+                out JsonElement lines))
+            {
+                throw new Exception(
+                    "El documento no contiene líneas."
+                );
+            }
+
+            foreach (JsonElement line in lines.EnumerateArray())
             {
                 if (!line.TryGetProperty(
                     "SalesItemLineDetail",
-                    out var detail))
+                    out JsonElement detail))
                 {
                     continue;
                 }
 
                 string lineId =
-                    GetString(line, "Id", "");
+                    GetString(
+                        line,
+                        "Id",
+                        ""
+                    );
 
                 decimal qty =
-                    GetDecimal(detail, "Qty", 1);
+                    GetDecimal(
+                        detail,
+                        "Qty",
+                        1
+                    );
 
                 if (qty <= 0)
                 {
@@ -396,14 +436,17 @@ namespace QBTicketsApi.Services
                 }
 
                 decimal amountOriginal =
-                    GetDecimal(line, "Amount");
+                    GetDecimal(
+                        line,
+                        "Amount"
+                    );
 
                 decimal descuentoLinea = 0;
 
                 if (!string.IsNullOrWhiteSpace(lineId) &&
                     discountMap.TryGetValue(
                         lineId,
-                        out var requestedDiscount))
+                        out decimal requestedDiscount))
                 {
                     descuentoLinea =
                         requestedDiscount;
@@ -427,40 +470,66 @@ namespace QBTicketsApi.Services
                 }
 
                 decimal amountFinal =
-                    amountOriginal - descuentoLinea;
+                    amountOriginal -
+                    descuentoLinea;
 
+                /*
+                 * Se toma primero el precio unitario
+                 * enviado por QuickBooks.
+                 */
                 decimal price =
-                    qty > 0
-                        ? amountOriginal / qty
-                        : amountOriginal;
-
-                string description =
-                    GetString(
-                        line,
-                        "Description",
-                        ""
+                    GetDecimal(
+                        detail,
+                        "UnitPrice",
+                        0
                     );
 
-                if (string.IsNullOrWhiteSpace(
-                    description))
+                /*
+                 * Si QuickBooks no devuelve UnitPrice,
+                 * se calcula usando total / cantidad.
+                 */
+                if (price <= 0 && qty > 0)
                 {
-                    if (detail.TryGetProperty(
-                        "ItemRef",
-                        out var itemRef))
-                    {
-                        description =
-                            GetString(
-                                itemRef,
-                                "name",
-                                "Producto"
-                            );
-                    }
+                    price =
+                        amountOriginal / qty;
                 }
 
-                if (string.IsNullOrWhiteSpace(
-                    description))
+                /*
+                 * Se toma primero el nombre real del artículo:
+                 * SalesItemLineDetail -> ItemRef -> name.
+                 */
+                string description = "";
+
+                if (detail.TryGetProperty(
+                    "ItemRef",
+                    out JsonElement itemRef))
                 {
-                    description = "Producto";
+                    description =
+                        GetString(
+                            itemRef,
+                            "name",
+                            ""
+                        );
+                }
+
+                /*
+                 * La descripción manual solamente se usa
+                 * cuando no viene el nombre del producto.
+                 */
+                if (string.IsNullOrWhiteSpace(description))
+                {
+                    description =
+                        GetString(
+                            line,
+                            "Description",
+                            ""
+                        );
+                }
+
+                if (string.IsNullOrWhiteSpace(description))
+                {
+                    description =
+                        "Producto";
                 }
 
                 decimal taxable =
@@ -506,12 +575,14 @@ namespace QBTicketsApi.Services
 
                         new XElement(
                             dte + "Descripcion",
-                            description
+                            description.Trim()
                         ),
 
                         new XElement(
                             dte + "PrecioUnitario",
-                            FormatoDecimal(price)
+                            FormatoDecimal(
+                                price
+                            )
                         ),
 
                         new XElement(
@@ -546,12 +617,16 @@ namespace QBTicketsApi.Services
 
                                 new XElement(
                                     dte + "MontoGravable",
-                                    FormatoDecimal(taxable)
+                                    FormatoDecimal(
+                                        taxable
+                                    )
                                 ),
 
                                 new XElement(
                                     dte + "MontoImpuesto",
-                                    FormatoDecimal(tax)
+                                    FormatoDecimal(
+                                        tax
+                                    )
                                 )
                             )
                         ),
@@ -592,7 +667,7 @@ namespace QBTicketsApi.Services
                 return result;
             }
 
-            foreach (var discount in discounts)
+            foreach (ItemDiscountRequest discount in discounts)
             {
                 if (discount == null)
                 {
@@ -600,7 +675,8 @@ namespace QBTicketsApi.Services
                 }
 
                 string lineId =
-                    discount.LineId?.Trim() ?? "";
+                    discount.LineId?.Trim()
+                    ?? "";
 
                 if (string.IsNullOrWhiteSpace(lineId))
                 {
@@ -652,14 +728,14 @@ namespace QBTicketsApi.Services
 
             if (!qbDoc.TryGetProperty(
                 "Line",
-                out var lines))
+                out JsonElement lines))
             {
                 throw new Exception(
                     "El documento no contiene líneas."
                 );
             }
 
-            foreach (var line in lines.EnumerateArray())
+            foreach (JsonElement line in lines.EnumerateArray())
             {
                 if (!line.TryGetProperty(
                     "SalesItemLineDetail",
@@ -669,7 +745,11 @@ namespace QBTicketsApi.Services
                 }
 
                 string lineId =
-                    GetString(line, "Id", "");
+                    GetString(
+                        line,
+                        "Id",
+                        ""
+                    );
 
                 if (string.IsNullOrWhiteSpace(lineId))
                 {
@@ -677,14 +757,19 @@ namespace QBTicketsApi.Services
                 }
 
                 availableLines[lineId] =
-                    GetDecimal(line, "Amount");
+                    GetDecimal(
+                        line,
+                        "Amount"
+                    );
             }
 
-            foreach (var discount in discountMap)
+            foreach (
+                KeyValuePair<string, decimal> discount
+                in discountMap)
             {
                 if (!availableLines.TryGetValue(
                     discount.Key,
-                    out var lineAmount))
+                    out decimal lineAmount))
                 {
                     throw new Exception(
                         $"No se encontró la línea " +
@@ -707,8 +792,8 @@ namespace QBTicketsApi.Services
             JsonElement qbDoc)
         {
             if (qbDoc.TryGetProperty(
-                    "CustomerRef",
-                    out var customerRef))
+                "CustomerRef",
+                out JsonElement customerRef))
             {
                 return GetString(
                     customerRef,
@@ -727,7 +812,7 @@ namespace QBTicketsApi.Services
         {
             return element.TryGetProperty(
                 property,
-                out var value)
+                out JsonElement value)
                     ? value.GetString() ?? fallback
                     : fallback;
         }
@@ -739,13 +824,13 @@ namespace QBTicketsApi.Services
         {
             if (!element.TryGetProperty(
                 property,
-                out var value))
+                out JsonElement value))
             {
                 return fallback;
             }
 
             return value.TryGetDecimal(
-                out var result)
+                out decimal result)
                     ? result
                     : fallback;
         }
@@ -762,22 +847,24 @@ namespace QBTicketsApi.Services
         private static string BuildFechaHoraEmision(
             string txnDate)
         {
-            var guatemalaOffset =
+            TimeSpan guatemalaOffset =
                 TimeSpan.FromHours(-6);
 
             DateTime baseDate =
                 DateTime.TryParse(
                     txnDate,
-                    out var parsed)
+                    out DateTime parsed)
                     ? parsed.Date
                     : DateTime.UtcNow.Date;
 
-            var nowGuatemala =
+            DateTimeOffset nowGuatemala =
                 new DateTimeOffset(
                     DateTime.UtcNow,
                     TimeSpan.Zero
                 )
-                .ToOffset(guatemalaOffset);
+                .ToOffset(
+                    guatemalaOffset
+                );
 
             var emision =
                 new DateTimeOffset(
