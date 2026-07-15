@@ -512,10 +512,6 @@ namespace QBTicketsApi.Services
                         );
                 }
 
-                /*
-                 * La descripción manual solamente se usa
-                 * cuando no viene el nombre del producto.
-                 */
                 if (string.IsNullOrWhiteSpace(description))
                 {
                     description =
@@ -528,8 +524,7 @@ namespace QBTicketsApi.Services
 
                 if (string.IsNullOrWhiteSpace(description))
                 {
-                    description =
-                        "Producto";
+                    description = "Producto";
                 }
 
                 decimal taxable =
@@ -637,7 +632,9 @@ namespace QBTicketsApi.Services
                                 amountFinal
                             )
                         )
+
                     )
+
                 );
 
                 lineNumber++;

@@ -1080,10 +1080,6 @@ namespace QBTicketsApi.Services
                         );
                 }
 
-                /*
-                 * Solo si QuickBooks no devuelve el nombre del artículo,
-                 * utiliza la descripción escrita en la línea.
-                 */
                 if (string.IsNullOrWhiteSpace(productName))
                 {
                     productName =

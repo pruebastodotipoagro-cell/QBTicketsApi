@@ -1,9 +1,10 @@
-﻿using QBTicketsApi.Database;
+﻿using Microsoft.EntityFrameworkCore;
+using QBTicketsApi.Database;
+using QBTicketsApi.DTOs;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using QBTicketsApi.DTOs;
 
 namespace QBTicketsApi.Services
 {
@@ -46,6 +47,179 @@ namespace QBTicketsApi.Services
             var response = await client.GetAsync(url);
             return await response.Content.ReadAsStringAsync();
         }
+        public async Task<List<InvoiceResponseDto>>
+    GetSalesReceiptsList(
+        string? fechaDesde = null,
+        string? fechaHasta = null)
+        {
+            string json =
+                await GetSalesReceipts(
+                    fechaDesde,
+                    fechaHasta
+                );
+
+            var result =
+                new List<InvoiceResponseDto>();
+
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return result;
+            }
+
+            using var doc =
+                JsonDocument.Parse(json);
+
+            if (!doc.RootElement.TryGetProperty(
+                "QueryResponse",
+                out var queryResponse))
+            {
+                return result;
+            }
+
+            if (!queryResponse.TryGetProperty(
+                "SalesReceipt",
+                out var salesReceipts))
+            {
+                return result;
+            }
+
+            foreach (var receipt in salesReceipts.EnumerateArray())
+            {
+                string id =
+                    receipt.TryGetProperty(
+                        "Id",
+                        out var idValue)
+                        ? idValue.GetString() ?? ""
+                        : "";
+
+                string docNumber =
+                    receipt.TryGetProperty(
+                        "DocNumber",
+                        out var docValue)
+                        ? docValue.GetString() ?? id
+                        : id;
+
+                string customerNameQuickBooks =
+                    "Consumidor Final";
+
+                if (receipt.TryGetProperty(
+                        "CustomerRef",
+                        out var customerRef) &&
+                    customerRef.TryGetProperty(
+                        "name",
+                        out var nameValue))
+                {
+                    customerNameQuickBooks =
+                        nameValue.GetString()
+                        ?? "Consumidor Final";
+                }
+
+                DateTime issueDate =
+                    DateTime.UtcNow;
+
+                if (receipt.TryGetProperty(
+                        "TxnDate",
+                        out var dateValue))
+                {
+                    DateTime.TryParse(
+                        dateValue.GetString(),
+                        out issueDate
+                    );
+                }
+
+                decimal totalQuickBooks = 0;
+
+                if (receipt.TryGetProperty(
+                        "TotalAmt",
+                        out var totalValue))
+                {
+                    totalValue.TryGetDecimal(
+                        out totalQuickBooks
+                    );
+                }
+
+                var certificada =
+                    await _db.Invoices
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(
+                            x =>
+                                x.QuickBooksId == id &&
+                                x.IsCertified
+                        );
+
+                string customerNitFinal;
+                string customerNameFinal;
+                decimal totalFinal;
+
+                if (certificada != null)
+                {
+                    customerNitFinal =
+                        string.IsNullOrWhiteSpace(
+                            certificada.CustomerNit
+                        )
+                            ? "CF"
+                            : certificada.CustomerNit;
+
+                    customerNameFinal =
+                        string.IsNullOrWhiteSpace(
+                            certificada.CustomerName
+                        )
+                            ? "Consumidor Final"
+                            : certificada.CustomerName;
+
+                    totalFinal =
+                        certificada.Total;
+                }
+                else
+                {
+                    customerNitFinal =
+                        _customerLookupService.GetNit(
+                            customerNameQuickBooks
+                        );
+
+                    if (string.IsNullOrWhiteSpace(
+                        customerNitFinal))
+                    {
+                        customerNitFinal = "CF";
+                    }
+
+                    customerNameFinal =
+                        customerNameQuickBooks;
+
+                    totalFinal =
+                        totalQuickBooks;
+                }
+
+                if (customerNitFinal.Equals(
+                    "CF",
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    customerNameFinal =
+                        "Consumidor Final";
+                }
+
+                result.Add(
+                    new InvoiceResponseDto
+                    {
+                        QbInvoiceId = id,
+                        InvoiceNumber = docNumber,
+                        CustomerName = customerNameFinal,
+                        CustomerNit = customerNitFinal,
+                        IssueDate = issueDate,
+                        Total = totalFinal,
+                        Balance = 0,
+                        SaleType = "contado"
+                    }
+                );
+            }
+
+            return result
+                .OrderByDescending(
+                    x => x.IssueDate
+                )
+                .ToList();
+        }
+
 
         private async Task RefreshToken()
         {
@@ -181,19 +355,53 @@ namespace QBTicketsApi.Services
 
                 // Si esta factura ya fue certificada, usamos el NIT real con el que se certificó
                 // (el que el cajero corrigió, si aplicó), no el del lookup automático.
-                var certificada = _db.Invoices.FirstOrDefault(x => x.QuickBooksId == id && x.IsCertified);
-                string customerNit = certificada != null
-                    ? certificada.CustomerNit
-                    : _customerLookupService.GetNit(customerName);
+                var certificada = await _db.Invoices
+     .AsNoTracking()
+     .FirstOrDefaultAsync(
+         x => x.QuickBooksId == id &&
+              x.IsCertified
+     );
+
+                string customerNit;
+                string customerNameFinal;
+                decimal totalFinal;
+
+                if (certificada != null)
+                {
+                    customerNit =
+                        string.IsNullOrWhiteSpace(certificada.CustomerNit)
+                            ? "CF"
+                            : certificada.CustomerNit;
+
+                    customerNameFinal =
+                        string.IsNullOrWhiteSpace(certificada.CustomerName)
+                            ? "Consumidor Final"
+                            : certificada.CustomerName;
+
+                    totalFinal = certificada.Total;
+                }
+                else
+                {
+                    customerNit =
+                        _customerLookupService.GetNit(customerName);
+
+                    if (string.IsNullOrWhiteSpace(customerNit))
+                    {
+                        customerNit = "CF";
+                    }
+
+                    customerNameFinal = customerName;
+                    totalFinal = total;
+                }
 
                 result.Add(new InvoiceResponseDto
                 {
                     QbInvoiceId = id,
                     InvoiceNumber = docNumber,
-                    CustomerName = customerName,
+                    CustomerName = customerNameFinal,
                     CustomerNit = customerNit,
+                    Total = totalFinal,
                     IssueDate = issueDate,
-                    Total = total,
                     Balance = balance,
                     SaleType = "credito"
                 });
@@ -396,13 +604,7 @@ namespace QBTicketsApi.Services
                             ? lineIdElement.GetString() ?? ""
                             : "";
 
-                    string description =
-                        line.TryGetProperty(
-                            "Description",
-                            out var descriptionElement)
-                            ? descriptionElement.GetString() ?? ""
-                            : "";
-
+                    string description = "";
                     string itemId = "";
                     string itemName = "";
 
@@ -425,11 +627,22 @@ namespace QBTicketsApi.Services
                                 : "";
                     }
 
+                    description = itemName;
+
                     if (string.IsNullOrWhiteSpace(description))
                     {
-                        description = itemName;
+                        description =
+                            line.TryGetProperty(
+                                "Description",
+                                out var descriptionElement)
+                                ? descriptionElement.GetString() ?? ""
+                                : "";
                     }
 
+                    if (string.IsNullOrWhiteSpace(description))
+                    {
+                        description = "Producto";
+                    }
                     decimal quantity = 1m;
 
                     if (detail.TryGetProperty(
