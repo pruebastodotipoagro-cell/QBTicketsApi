@@ -247,9 +247,9 @@ namespace QBTicketsApi.Services
                                             dte + "DireccionEmisor",
 
                                             new XElement(
-                                                dte + "Direccion",
-                                                "CARRETERA INTERAMERICANA, ZONA 0, ALDEA TIUCAL, ASUNCIÓN MITA, JUTIAPA"
-                                            ),
+                                            dte + "Direccion",
+                                            "CARRETERA INTERAMERICANA, ZONA 0, ALDEA TIUCAL"
+                                           ),
 
                                             new XElement(
                                                 dte + "CodigoPostal",
