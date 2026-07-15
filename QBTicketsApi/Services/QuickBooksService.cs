@@ -27,26 +27,89 @@ namespace QBTicketsApi.Services
         public async Task<string> GetSalesReceipts(string? fechaDesde = null, string? fechaHasta = null)
         {
             var connection = _db.QuickBooksConnections.FirstOrDefault();
-            if (connection == null) return "No hay conexión QuickBooks.";
+
+            if (connection == null)
+            {
+                throw new Exception("No hay conexión con QuickBooks.");
+            }
 
             if (connection.AccessTokenExpiresAt <= DateTime.UtcNow.AddMinutes(5))
+            {
                 await RefreshToken();
+            }
 
             connection = _db.QuickBooksConnections.FirstOrDefault();
 
+            if (connection == null)
+            {
+                throw new Exception("No se pudo recuperar la conexión con QuickBooks.");
+            }
+
             var client = _httpClientFactory.CreateClient();
+
             client.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Bearer", connection.AccessToken);
+                new AuthenticationHeaderValue(
+                    "Bearer",
+                    connection.AccessToken
+                );
 
-            string whereClause = BuildDateWhereClause(fechaDesde, fechaHasta);
-            string queryText = $"SELECT * FROM SalesReceipt{whereClause} MAXRESULTS 200";
+            client.DefaultRequestHeaders.Accept.Clear();
 
-            string query = Uri.EscapeDataString(queryText);
-            string url = $"https://quickbooks.api.intuit.com/v3/company/{connection.RealmId}/query?query={query}";
+            client.DefaultRequestHeaders.Accept.Add(
+                new MediaTypeWithQualityHeaderValue(
+                    "application/json"
+                )
+            );
 
-            var response = await client.GetAsync(url);
-            return await response.Content.ReadAsStringAsync();
+            string whereClause =
+                BuildDateWhereClause(
+                    fechaDesde,
+                    fechaHasta
+                );
+
+            string queryText =
+                $"SELECT * FROM SalesReceipt{whereClause} MAXRESULTS 200";
+
+            string query =
+                Uri.EscapeDataString(queryText);
+
+            string url =
+                $"https://quickbooks.api.intuit.com/v3/company/" +
+                $"{connection.RealmId}/query?query={query}";
+
+            HttpResponseMessage response =
+                await client.GetAsync(url);
+
+            string responseText =
+                await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new Exception(
+                    "QuickBooks no pudo cargar los recibos de venta.\n" +
+                    $"Código HTTP: {(int)response.StatusCode} " +
+                    $"{response.StatusCode}\n" +
+                    responseText
+                );
+            }
+
+            string contentType =
+                response.Content.Headers.ContentType?.MediaType ?? "";
+
+            if (!contentType.Contains(
+                "json",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                throw new Exception(
+                    "QuickBooks devolvió un formato distinto de JSON.\n" +
+                    $"Content-Type: {contentType}\n" +
+                    responseText
+                );
+            }
+
+            return responseText;
         }
+
         public async Task<List<InvoiceResponseDto>>
     GetSalesReceiptsList(
         string? fechaDesde = null,
