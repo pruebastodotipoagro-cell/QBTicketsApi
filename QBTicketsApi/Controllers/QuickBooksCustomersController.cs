@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using QBTicketsApi.DTOs;
 using QBTicketsApi.Services;
 using System.Text.Json;
 
@@ -153,6 +154,32 @@ namespace QBTicketsApi.Controllers
                     customerJson,
                     "application/json"
                 );
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    error = ex.Message
+                });
+            }
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> GetCustomers()
+        {
+            try
+            {
+                List<QuickBooksCustomerDto> customers =
+                    await _quickBooksService
+                        .GetCustomersListAsync();
+
+                return Ok(new
+                {
+                    success = true,
+                    total = customers.Count,
+                    customers
+                });
             }
             catch (Exception ex)
             {

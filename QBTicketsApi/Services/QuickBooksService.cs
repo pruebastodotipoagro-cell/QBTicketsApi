@@ -874,6 +874,244 @@ namespace QBTicketsApi.Services
             return responseText;
         }
 
+        public async Task<List<QuickBooksCustomerDto>>
+    GetCustomersListAsync()
+        {
+            var connection =
+                await _db.QuickBooksConnections
+                    .FirstOrDefaultAsync();
+
+            if (connection == null)
+            {
+                throw new Exception(
+                    "No hay conexión con QuickBooks."
+                );
+            }
+
+            if (connection.AccessTokenExpiresAt <=
+                DateTime.UtcNow.AddMinutes(5))
+            {
+                await RefreshToken();
+            }
+
+            connection =
+                await _db.QuickBooksConnections
+                    .FirstOrDefaultAsync();
+
+            if (connection == null)
+            {
+                throw new Exception(
+                    "No se pudo recuperar la conexión con QuickBooks."
+                );
+            }
+
+            var client =
+                _httpClientFactory.CreateClient();
+
+            client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue(
+                    "Bearer",
+                    connection.AccessToken
+                );
+
+            client.DefaultRequestHeaders.Accept.Clear();
+
+            client.DefaultRequestHeaders.Accept.Add(
+                new MediaTypeWithQualityHeaderValue(
+                    "application/json"
+                )
+            );
+
+            var result =
+                new List<QuickBooksCustomerDto>();
+
+            int startPosition = 1;
+            const int maxResults = 1000;
+
+            while (true)
+            {
+                string queryText =
+                    "SELECT * FROM Customer " +
+                    $"STARTPOSITION {startPosition} " +
+                    $"MAXRESULTS {maxResults}";
+
+                string query =
+                    Uri.EscapeDataString(queryText);
+
+                string url =
+                    $"https://quickbooks.api.intuit.com/v3/company/" +
+                    $"{connection.RealmId}/query" +
+                    $"?query={query}" +
+                    $"&include=enhancedAllCustomFields";
+
+                HttpResponseMessage response =
+                    await client.GetAsync(url);
+
+                string responseText =
+                    await response.Content.ReadAsStringAsync();
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    throw new Exception(
+                        "No se pudieron consultar los clientes de QuickBooks.\n" +
+                        $"Código HTTP: {(int)response.StatusCode}\n" +
+                        responseText
+                    );
+                }
+
+                using JsonDocument doc =
+                    JsonDocument.Parse(responseText);
+
+                if (!doc.RootElement.TryGetProperty(
+                        "QueryResponse",
+                        out JsonElement queryResponse))
+                {
+                    break;
+                }
+
+                if (!queryResponse.TryGetProperty(
+                        "Customer",
+                        out JsonElement customers) ||
+                    customers.ValueKind != JsonValueKind.Array)
+                {
+                    break;
+                }
+
+                int cantidadPagina =
+                    customers.GetArrayLength();
+
+                foreach (
+                    JsonElement customer
+                    in customers.EnumerateArray())
+                {
+                    string customerId =
+                        customer.TryGetProperty(
+                            "Id",
+                            out JsonElement idElement)
+                            ? idElement.GetString() ?? ""
+                            : "";
+
+                    string displayName =
+                        customer.TryGetProperty(
+                            "DisplayName",
+                            out JsonElement nameElement)
+                            ? nameElement.GetString() ?? ""
+                            : "";
+
+                    bool active =
+                        customer.TryGetProperty(
+                            "Active",
+                            out JsonElement activeElement) &&
+                        activeElement.ValueKind ==
+                            JsonValueKind.True;
+
+                    string nit =
+                        GetNitFromCustomerJson(customer);
+
+                    string phone = "";
+
+                    if (customer.TryGetProperty(
+                            "PrimaryPhone",
+                            out JsonElement primaryPhone))
+                    {
+                        phone =
+                            primaryPhone.TryGetProperty(
+                                "FreeFormNumber",
+                                out JsonElement phoneElement)
+                                ? phoneElement.GetString() ?? ""
+                                : "";
+                    }
+
+                    string address = "";
+
+                    if (customer.TryGetProperty(
+                            "BillAddr",
+                            out JsonElement billAddress))
+                    {
+                        address =
+                            billAddress.TryGetProperty(
+                                "Line1",
+                                out JsonElement addressElement)
+                                ? addressElement.GetString() ?? ""
+                                : "";
+                    }
+
+                    result.Add(
+                        new QuickBooksCustomerDto
+                        {
+                            CustomerId = customerId,
+                            DisplayName = displayName,
+                            Nit = nit,
+                            Phone = phone,
+                            Address = address,
+                            Active = active
+                        }
+                    );
+                }
+
+                if (cantidadPagina < maxResults)
+                {
+                    break;
+                }
+
+                startPosition += maxResults;
+            }
+
+            return result
+                .Where(x => x.Active)
+                .OrderBy(x => x.DisplayName)
+                .ToList();
+        }
+
+        private static string GetNitFromCustomerJson(
+            JsonElement customer)
+        {
+            if (!customer.TryGetProperty(
+                    "CustomField",
+                    out JsonElement customFields) ||
+                customFields.ValueKind != JsonValueKind.Array)
+            {
+                return "CF";
+            }
+
+            foreach (
+                JsonElement field
+                in customFields.EnumerateArray())
+            {
+                string fieldName =
+                    field.TryGetProperty(
+                        "Name",
+                        out JsonElement nameElement)
+                        ? nameElement.GetString() ?? ""
+                        : "";
+
+                if (!fieldName.Equals(
+                        "NIT",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                string nit =
+                    field.TryGetProperty(
+                        "StringValue",
+                        out JsonElement valueElement)
+                        ? valueElement.GetString() ?? ""
+                        : "";
+
+                nit =
+                    nit.Trim()
+                        .Replace("-", "")
+                        .Replace(" ", "");
+
+                return string.IsNullOrWhiteSpace(nit)
+                    ? "CF"
+                    : nit;
+            }
+
+            return "CF";
+        }
+
 
         private class QuickBooksTokenResponse
         {
