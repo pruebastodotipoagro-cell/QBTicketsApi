@@ -45,9 +45,7 @@ namespace QBTicketsApi.Controllers
                 });
             }
         }
-    }
-
-    [HttpGet("from-document/{documentId}/raw")]
+        [HttpGet("from-document/{documentId}/raw")]
         public async Task<IActionResult> GetCustomerFromDocumentRaw(
     string documentId)
         {
@@ -165,4 +163,6 @@ namespace QBTicketsApi.Controllers
                 });
             }
         }
+
     }
+}
