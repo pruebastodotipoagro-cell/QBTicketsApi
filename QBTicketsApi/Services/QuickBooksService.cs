@@ -788,6 +788,92 @@ namespace QBTicketsApi.Services
 
             return result;
         }
+        public async Task<string> GetCustomerByIdAsync(
+    string customerId)
+        {
+            if (string.IsNullOrWhiteSpace(customerId))
+            {
+                throw new Exception(
+                    "El ID del cliente está vacío."
+                );
+            }
+
+            var connection =
+                await _db.QuickBooksConnections
+                    .FirstOrDefaultAsync();
+
+            if (connection == null)
+            {
+                throw new Exception(
+                    "No hay conexión con QuickBooks."
+                );
+            }
+
+            if (connection.AccessTokenExpiresAt <=
+                DateTime.UtcNow.AddMinutes(5))
+            {
+                await RefreshToken();
+            }
+
+            connection =
+                await _db.QuickBooksConnections
+                    .FirstOrDefaultAsync();
+
+            if (connection == null)
+            {
+                throw new Exception(
+                    "No se pudo recuperar la conexión con QuickBooks."
+                );
+            }
+
+            var client =
+                _httpClientFactory.CreateClient();
+
+            client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue(
+                    "Bearer",
+                    connection.AccessToken
+                );
+
+            client.DefaultRequestHeaders.Accept.Clear();
+
+            client.DefaultRequestHeaders.Accept.Add(
+                new MediaTypeWithQualityHeaderValue(
+                    "application/json"
+                )
+            );
+
+            string queryText =
+                $"SELECT * FROM Customer " +
+                $"WHERE Id = '{customerId.Trim()}'";
+
+            string query =
+                Uri.EscapeDataString(queryText);
+
+            string url =
+                $"https://quickbooks.api.intuit.com/v3/company/" +
+                $"{connection.RealmId}/query" +
+                $"?query={query}" +
+                $"&include=enhancedAllCustomFields";
+
+            HttpResponseMessage response =
+                await client.GetAsync(url);
+
+            string responseText =
+                await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new Exception(
+                    "No se pudo consultar el cliente en QuickBooks.\n" +
+                    $"Código HTTP: {(int)response.StatusCode}\n" +
+                    responseText
+                );
+            }
+
+            return responseText;
+        }
+
 
         private class QuickBooksTokenResponse
         {
