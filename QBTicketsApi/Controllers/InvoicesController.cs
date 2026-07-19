@@ -3,10 +3,12 @@ using QBTicketsApi.DTOs;
 using QBTicketsApi.Services;
 using System.Globalization;
 using System.Xml.Linq;
+using Microsoft.AspNetCore.Authorization;
 
 namespace QBTicketsApi.Controllers
 {
     [ApiController]
+    [Authorize]
     [Route("api/invoices")]
     public class InvoicesController : ControllerBase
     {

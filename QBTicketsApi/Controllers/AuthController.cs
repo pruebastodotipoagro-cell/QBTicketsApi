@@ -1,7 +1,10 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.IdentityModel.Tokens;
 using QBTicketsApi.Database;
 using QBTicketsApi.DTOs;
-using QBTicketsApi.Helpers;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 
 namespace QBTicketsApi.Controllers
 {
@@ -10,32 +13,46 @@ namespace QBTicketsApi.Controllers
     public class AuthController : ControllerBase
     {
         private readonly AppDbContext _db;
+        private readonly IConfiguration _configuration;
 
-        public AuthController(AppDbContext db)
+        public AuthController(
+            AppDbContext db,
+            IConfiguration configuration)
         {
             _db = db;
+            _configuration = configuration;
         }
 
         [HttpPost("login")]
-        public IActionResult Login([FromBody] LoginRequest request)
+        public IActionResult Login(
+            [FromBody] LoginRequest request)
         {
-            var user = _db.Users.FirstOrDefault(
-                u => u.Username == request.Username
-            );
+            string username =
+                request.Username?.Trim() ?? "";
 
-            if (user == null || user.Password != request.Password)
+            var user =
+                _db.Users.FirstOrDefault(
+                    u => u.Username == username
+                );
+
+            if (user == null ||
+                user.Password != request.Password)
             {
                 return Unauthorized(new
                 {
                     success = false,
-                    error = "Usuario o contraseña incorrectos."
+                    error =
+                        "Usuario o contraseña incorrectos."
                 });
             }
+
+            string token =
+                GenerateJwtToken(user);
 
             return Ok(new
             {
                 success = true,
-                token = "TEMP_TOKEN_CSHARP",
+                token,
                 user = new
                 {
                     id = user.Id,
@@ -43,9 +60,88 @@ namespace QBTicketsApi.Controllers
                     role = user.Role,
                     name = user.Name,
                     cashierName = user.CashierName,
-                    canViewAllSales = user.CanViewAllSales
+                    canViewAllSales =
+                        user.CanViewAllSales
                 }
             });
+        }
+
+        private string GenerateJwtToken(
+            QBTicketsApi.Models.User user)
+        {
+            string jwtKey =
+                _configuration["Jwt:Key"]
+                ?? throw new InvalidOperationException(
+                    "No está configurada Jwt:Key."
+                );
+
+            string jwtIssuer =
+                _configuration["Jwt:Issuer"]
+                ?? "QBTicketsApi";
+
+            string jwtAudience =
+                _configuration["Jwt:Audience"]
+                ?? "QBTicketsNative";
+
+            var claims =
+                new List<Claim>
+                {
+                    new Claim(
+                        ClaimTypes.NameIdentifier,
+                        user.Id.ToString()
+                    ),
+
+                    new Claim(
+                        ClaimTypes.Name,
+                        user.Username
+                    ),
+
+                    new Claim(
+                        ClaimTypes.Role,
+                        user.Role ?? ""
+                    ),
+
+                    new Claim(
+                        "displayName",
+                        user.Name ?? ""
+                    ),
+
+                    new Claim(
+                        "cashierName",
+                        user.CashierName ?? ""
+                    ),
+
+                    new Claim(
+                        "canViewAllSales",
+                        user.CanViewAllSales
+                            ? "true"
+                            : "false"
+                    )
+                };
+
+            var signingKey =
+                new SymmetricSecurityKey(
+                    Encoding.UTF8.GetBytes(jwtKey)
+                );
+
+            var credentials =
+                new SigningCredentials(
+                    signingKey,
+                    SecurityAlgorithms.HmacSha256
+                );
+
+            var jwt =
+                new JwtSecurityToken(
+                    issuer: jwtIssuer,
+                    audience: jwtAudience,
+                    claims: claims,
+                    notBefore: DateTime.UtcNow,
+                    expires: DateTime.UtcNow.AddHours(12),
+                    signingCredentials: credentials
+                );
+
+            return new JwtSecurityTokenHandler()
+                .WriteToken(jwt);
         }
     }
 }
