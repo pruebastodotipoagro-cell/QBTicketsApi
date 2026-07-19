@@ -1137,9 +1137,7 @@ namespace QBTicketsApi.Services
                 return "";
             }
 
-            foreach (
-                JsonElement field
-                in customFields.EnumerateArray())
+            foreach (JsonElement field in customFields.EnumerateArray())
             {
                 string fieldName =
                     field.TryGetProperty(
@@ -1155,17 +1153,33 @@ namespace QBTicketsApi.Services
                     continue;
                 }
 
-                string cashierName =
+                string optionId =
                     field.TryGetProperty(
                         "StringValue",
                         out JsonElement valueElement)
                         ? valueElement.GetString() ?? ""
                         : "";
 
-                return cashierName.Trim();
+                return GetCashierNameFromOptionId(
+                    optionId.Trim()
+                );
             }
 
             return "";
+        }
+
+        private static string GetCashierNameFromOptionId(
+    string optionId)
+        {
+            return optionId switch
+            {
+                "1" => "ROCIO RAMOS",
+                "2" => "ADAN HERNANDEZ",
+                "3" => "FERNANDO GOMEZ",
+                "4" => "CARLOS LORENZANA",
+                "5" => "PAOLA VALLADARES",
+                _ => optionId
+            };
         }
 
 
