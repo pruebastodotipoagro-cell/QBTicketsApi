@@ -10,5 +10,7 @@
         public decimal Total { get; set; }
         public decimal Balance { get; set; }
         public string SaleType { get; set; } = "credito";
+
+        public string CashierName { get; set; } = "";
     }
 }

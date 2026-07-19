@@ -75,7 +75,9 @@ namespace QBTicketsApi.Services
 
             string url =
                 $"https://quickbooks.api.intuit.com/v3/company/" +
-                $"{connection.RealmId}/query?query={query}";
+                $"{connection.RealmId}/query" +
+                $"?query={query}" +
+                $"&include=enhancedAllCustomFields";
 
             HttpResponseMessage response =
                 await client.GetAsync(url);
@@ -161,6 +163,9 @@ namespace QBTicketsApi.Services
                         out var docValue)
                         ? docValue.GetString() ?? id
                         : id;
+
+                string cashierName =
+                    GetCashierFromTransactionJson(receipt);
 
                 string customerNameQuickBooks =
                     "Consumidor Final";
@@ -271,7 +276,8 @@ namespace QBTicketsApi.Services
                         IssueDate = issueDate,
                         Total = totalFinal,
                         Balance = 0,
-                        SaleType = "contado"
+                        SaleType = "contado",
+                        CashierName = cashierName
                     }
                 );
             }
@@ -400,6 +406,9 @@ namespace QBTicketsApi.Services
                 string id = inv.TryGetProperty("Id", out var idValue) ? idValue.GetString() ?? "" : "";
                 string docNumber = inv.TryGetProperty("DocNumber", out var docValue) ? docValue.GetString() ?? "" : id;
 
+                string cashierName =
+                    GetCashierFromTransactionJson(inv);
+
                 string customerName = "Consumidor Final";
                 if (inv.TryGetProperty("CustomerRef", out var customerRef))
                     customerName = customerRef.TryGetProperty("name", out var nameValue) ? nameValue.GetString() ?? customerName : customerName;
@@ -466,7 +475,8 @@ namespace QBTicketsApi.Services
                     Total = totalFinal,
                     IssueDate = issueDate,
                     Balance = balance,
-                    SaleType = "credito"
+                    SaleType = "credito",
+                    CashierName = cashierName
                 });
             }
 
@@ -1111,6 +1121,50 @@ namespace QBTicketsApi.Services
 
             return "CF";
         }
+
+        private static string GetCashierFromTransactionJson(
+    JsonElement transaction)
+        {
+            if (!transaction.TryGetProperty(
+                    "CustomField",
+                    out JsonElement customFields) ||
+                customFields.ValueKind != JsonValueKind.Array)
+            {
+                return "";
+            }
+
+            foreach (
+                JsonElement field
+                in customFields.EnumerateArray())
+            {
+                string fieldName =
+                    field.TryGetProperty(
+                        "Name",
+                        out JsonElement nameElement)
+                        ? nameElement.GetString() ?? ""
+                        : "";
+
+                if (!fieldName.Equals(
+                        "CAJERO",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                string cashierName =
+                    field.TryGetProperty(
+                        "StringValue",
+                        out JsonElement valueElement)
+                        ? valueElement.GetString() ?? ""
+                        : "";
+
+                return cashierName.Trim();
+            }
+
+            return "";
+        }
+
+
 
 
         private class QuickBooksTokenResponse
