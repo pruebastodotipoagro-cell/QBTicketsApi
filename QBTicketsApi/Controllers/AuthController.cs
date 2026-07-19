@@ -19,7 +19,9 @@ namespace QBTicketsApi.Controllers
         [HttpPost("login")]
         public IActionResult Login([FromBody] LoginRequest request)
         {
-            var user = _db.Users.FirstOrDefault(u => u.Username == request.Username);
+            var user = _db.Users.FirstOrDefault(
+                u => u.Username == request.Username
+            );
 
             if (user == null || user.Password != request.Password)
             {
@@ -39,7 +41,9 @@ namespace QBTicketsApi.Controllers
                     id = user.Id,
                     username = user.Username,
                     role = user.Role,
-                    name = user.Name
+                    name = user.Name,
+                    cashierName = user.CashierName,
+                    canViewAllSales = user.CanViewAllSales
                 }
             });
         }
