@@ -350,7 +350,11 @@ namespace QBTicketsApi.Services
             );
 
             string query = Uri.EscapeDataString($"SELECT * FROM SalesReceipt WHERE Id = '{id}'");
-            string url = $"https://quickbooks.api.intuit.com/v3/company/{connection.RealmId}/query?query={query}";
+            string url =
+                $"https://quickbooks.api.intuit.com/v3/company/" +
+                $"{connection.RealmId}/query" +
+                $"?query={query}" +
+                $"&include=enhancedAllCustomFields";
 
             var response = await client.GetAsync(url);
             return await response.Content.ReadAsStringAsync();

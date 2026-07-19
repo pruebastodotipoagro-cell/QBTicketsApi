@@ -112,5 +112,30 @@ namespace QBTicketsApi.Controllers
                 });
             }
         }
+
+        // GET /api/invoices/raw-sales-receipt/11724
+        [HttpGet("raw-sales-receipt/{id}")]
+        public async Task<IActionResult> GetRawSalesReceipt(string id)
+        {
+            try
+            {
+                string json =
+                    await _quickBooksService
+                        .GetSalesReceiptById(id);
+
+                return Content(
+                    json,
+                    "application/json"
+                );
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    error = ex.Message
+                });
+            }
+        }
     }
 }
