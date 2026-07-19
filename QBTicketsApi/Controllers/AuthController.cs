@@ -28,11 +28,11 @@ namespace QBTicketsApi.Controllers
             [FromBody] LoginRequest request)
         {
             string username =
-                request.Username?.Trim() ?? "";
+     request.Username?.Trim().ToLower() ?? "";
 
             var user =
                 _db.Users.FirstOrDefault(
-                    u => u.Username == username
+                    u => u.Username.ToLower() == username
                 );
 
             if (user == null ||
