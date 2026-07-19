@@ -25,24 +25,35 @@ namespace QBTicketsApi.Controllers
 
         [HttpPost("login")]
         public IActionResult Login(
-            [FromBody] LoginRequest request)
+    [FromBody] LoginRequest request)
         {
             string username =
-     request.Username?.Trim().ToLower() ?? "";
+                request.Username?.Trim() ?? "";
+
+            string password =
+                request.Password?.Trim() ?? "";
 
             var user =
                 _db.Users.FirstOrDefault(
-                    u => u.Username.ToLower() == username
+                    u => u.Username.ToLower() ==
+                         username.ToLower()
                 );
 
-            if (user == null ||
-                user.Password != request.Password)
+            if (user == null)
             {
                 return Unauthorized(new
                 {
                     success = false,
-                    error =
-                        "Usuario o contraseña incorrectos."
+                    error = "El usuario no existe."
+                });
+            }
+
+            if (user.Password.Trim() != password)
+            {
+                return Unauthorized(new
+                {
+                    success = false,
+                    error = "La contraseña es incorrecta."
                 });
             }
 
@@ -60,8 +71,7 @@ namespace QBTicketsApi.Controllers
                     role = user.Role,
                     name = user.Name,
                     cashierName = user.CashierName,
-                    canViewAllSales =
-                        user.CanViewAllSales
+                    canViewAllSales = user.CanViewAllSales
                 }
             });
         }
