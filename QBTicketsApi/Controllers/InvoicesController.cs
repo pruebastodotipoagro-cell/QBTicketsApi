@@ -1,9 +1,8 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using QBTicketsApi.DTOs;
 using QBTicketsApi.Services;
-using System.Globalization;
-using System.Xml.Linq;
-using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 
 namespace QBTicketsApi.Controllers
 {
@@ -14,7 +13,8 @@ namespace QBTicketsApi.Controllers
     {
         private readonly QuickBooksService _quickBooksService;
 
-        public InvoicesController(QuickBooksService quickBooksService)
+        public InvoicesController(
+            QuickBooksService quickBooksService)
         {
             _quickBooksService = quickBooksService;
         }
@@ -22,16 +22,25 @@ namespace QBTicketsApi.Controllers
         [HttpGet("quickbooks-test")]
         public async Task<IActionResult> QuickBooksTest()
         {
-            string rawResult = await _quickBooksService.GetSalesReceipts();
+            if (!CanViewAllSales())
+            {
+                return Forbid();
+            }
 
-            return Content(rawResult, "application/xml");
+            string rawResult =
+                await _quickBooksService
+                    .GetSalesReceipts();
+
+            return Content(
+                rawResult,
+                "application/json"
+            );
         }
 
-        // GET /api/invoices/sales-receipts?desde=2026-07-01&hasta=2026-07-08
         [HttpGet("sales-receipts")]
         public async Task<IActionResult> GetSalesReceipts(
-    [FromQuery] string? desde = null,
-    [FromQuery] string? hasta = null)
+            [FromQuery] string? desde = null,
+            [FromQuery] string? hasta = null)
         {
             try
             {
@@ -41,6 +50,11 @@ namespace QBTicketsApi.Controllers
                             desde,
                             hasta
                         );
+
+                invoices =
+                    FilterInvoicesForCurrentUser(
+                        invoices
+                    );
 
                 return Ok(new
                 {
@@ -57,36 +71,113 @@ namespace QBTicketsApi.Controllers
             }
         }
 
-        // GET /api/invoices/credit-invoices?desde=2026-07-01&hasta=2026-07-08
         [HttpGet("credit-invoices")]
         public async Task<IActionResult> GetCreditInvoices(
             [FromQuery] string? desde = null,
             [FromQuery] string? hasta = null)
         {
-            var result =
-                await _quickBooksService.GetCreditInvoicesList(desde, hasta);
-
-            return Ok(new
+            try
             {
-                invoices = result
-            });
+                List<InvoiceResponseDto> invoices =
+                    await _quickBooksService
+                        .GetCreditInvoicesList(
+                            desde,
+                            hasta
+                        );
+
+                invoices =
+                    FilterInvoicesForCurrentUser(
+                        invoices
+                    );
+
+                return Ok(new
+                {
+                    invoices
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    error = ex.Message
+                });
+            }
         }
 
         [HttpGet("credit-summary")]
         public async Task<IActionResult> GetCreditSummary()
         {
-            var result =
-                await _quickBooksService.GetCreditSummaryList();
-
-            return Ok(new
+            try
             {
-                customers = result
-            });
+                List<InvoiceResponseDto> invoices =
+                    await _quickBooksService
+                        .GetCreditInvoicesList();
+
+                invoices =
+                    FilterInvoicesForCurrentUser(
+                        invoices
+                    );
+
+                var customers =
+                    invoices
+                        .Where(x => x.Balance > 0)
+                        .GroupBy(x => x.CustomerName)
+                        .Select(group =>
+                        {
+                            InvoiceResponseDto lastInvoice =
+                                group
+                                    .OrderByDescending(
+                                        x => x.IssueDate
+                                    )
+                                    .First();
+
+                            return new CreditCustomerSummaryDto
+                            {
+                                CustomerName =
+                                    group.Key,
+
+                                CustomerNit =
+                                    lastInvoice.CustomerNit,
+
+                                TotalDebt =
+                                    group.Sum(
+                                        x => x.Balance
+                                    ),
+
+                                OpenInvoices =
+                                    group.Count(),
+
+                                LastInvoiceId =
+                                    lastInvoice.QbInvoiceId,
+
+                                LastInvoiceNumber =
+                                    lastInvoice.InvoiceNumber
+                            };
+                        })
+                        .OrderBy(
+                            x => x.CustomerName
+                        )
+                        .ToList();
+
+                return Ok(new
+                {
+                    customers
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    error = ex.Message
+                });
+            }
         }
 
-        // GET /api/invoices/{id}/items
         [HttpGet("{id}/items")]
-        public async Task<IActionResult> GetDocumentItems(string id)
+        public async Task<IActionResult> GetDocumentItems(
+            string id)
         {
             try
             {
@@ -95,11 +186,28 @@ namespace QBTicketsApi.Controllers
                     return BadRequest(new
                     {
                         success = false,
-                        error = "El ID del documento es obligatorio."
+                        error =
+                            "El ID del documento es obligatorio."
                     });
                 }
 
-                var result =
+                bool hasAccess =
+                    await UserCanAccessDocumentAsync(id);
+
+                if (!hasAccess)
+                {
+                    return StatusCode(
+                        StatusCodes.Status403Forbidden,
+                        new
+                        {
+                            success = false,
+                            error =
+                                "No tiene permiso para consultar esta venta."
+                        }
+                    );
+                }
+
+                InvoiceItemsResponseDto result =
                     await _quickBooksService
                         .GetDocumentItemsAsync(id);
 
@@ -115,10 +223,15 @@ namespace QBTicketsApi.Controllers
             }
         }
 
-        // GET /api/invoices/raw-sales-receipt/11724
         [HttpGet("raw-sales-receipt/{id}")]
-        public async Task<IActionResult> GetRawSalesReceipt(string id)
+        public async Task<IActionResult> GetRawSalesReceipt(
+            string id)
         {
+            if (!CanViewAllSales())
+            {
+                return Forbid();
+            }
+
             try
             {
                 string json =
@@ -138,6 +251,87 @@ namespace QBTicketsApi.Controllers
                     error = ex.Message
                 });
             }
+        }
+
+        private List<InvoiceResponseDto>
+            FilterInvoicesForCurrentUser(
+                List<InvoiceResponseDto> invoices)
+        {
+            if (CanViewAllSales())
+            {
+                return invoices;
+            }
+
+            string cashierName =
+                GetCurrentCashierName();
+
+            if (string.IsNullOrWhiteSpace(
+                cashierName))
+            {
+                return new List<InvoiceResponseDto>();
+            }
+
+            return invoices
+                .Where(x =>
+                    string.Equals(
+                        x.CashierName?.Trim(),
+                        cashierName,
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                )
+                .ToList();
+        }
+
+        private async Task<bool>
+            UserCanAccessDocumentAsync(
+                string id)
+        {
+            if (CanViewAllSales())
+            {
+                return true;
+            }
+
+            string currentCashier =
+                GetCurrentCashierName();
+
+            if (string.IsNullOrWhiteSpace(
+                currentCashier))
+            {
+                return false;
+            }
+
+            string documentCashier =
+                await _quickBooksService
+                    .GetDocumentCashierNameAsync(id);
+
+            return string.Equals(
+                documentCashier?.Trim(),
+                currentCashier,
+                StringComparison.OrdinalIgnoreCase
+            );
+        }
+
+        private string GetCurrentCashierName()
+        {
+            return User.FindFirst(
+                       "cashierName"
+                   )?.Value?.Trim()
+                   ?? "";
+        }
+
+        private bool CanViewAllSales()
+        {
+            string value =
+                User.FindFirst(
+                    "canViewAllSales"
+                )?.Value
+                ?? "false";
+
+            return bool.TryParse(
+                       value,
+                       out bool canViewAll
+                   ) &&
+                   canViewAll;
         }
     }
 }

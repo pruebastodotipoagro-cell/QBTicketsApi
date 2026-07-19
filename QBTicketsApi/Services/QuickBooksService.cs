@@ -1181,7 +1181,77 @@ namespace QBTicketsApi.Services
                 _ => optionId
             };
         }
+        public async Task<string> GetDocumentCashierNameAsync(
+    string id)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                return "";
+            }
 
+            string json =
+                await GetSalesReceiptById(id);
+
+            if (!string.IsNullOrWhiteSpace(json) &&
+                json.Contains(
+                    "\"SalesReceipt\"",
+                    StringComparison.Ordinal))
+            {
+                return GetCashierFromQuickBooksResponse(
+                    json,
+                    "SalesReceipt"
+                );
+            }
+
+            json =
+                await GetInvoiceById(id);
+
+            if (!string.IsNullOrWhiteSpace(json) &&
+                json.Contains(
+                    "\"Invoice\"",
+                    StringComparison.Ordinal))
+            {
+                return GetCashierFromQuickBooksResponse(
+                    json,
+                    "Invoice"
+                );
+            }
+
+            return "";
+        }
+
+        private static string GetCashierFromQuickBooksResponse(
+            string json,
+            string documentProperty)
+        {
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return "";
+            }
+
+            using JsonDocument doc =
+                JsonDocument.Parse(json);
+
+            if (!doc.RootElement.TryGetProperty(
+                    "QueryResponse",
+                    out JsonElement queryResponse))
+            {
+                return "";
+            }
+
+            if (!queryResponse.TryGetProperty(
+                    documentProperty,
+                    out JsonElement documents) ||
+                documents.ValueKind != JsonValueKind.Array ||
+                documents.GetArrayLength() == 0)
+            {
+                return "";
+            }
+
+            return GetCashierFromTransactionJson(
+                documents[0]
+            );
+        }
 
 
 
