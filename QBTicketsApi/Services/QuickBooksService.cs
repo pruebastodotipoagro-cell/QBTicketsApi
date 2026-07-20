@@ -1,6 +1,8 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using QBTicketsApi.Database;
 using QBTicketsApi.DTOs;
+using QBTicketsApi.DTOs.QBTicketsApi.DTOs;
+using QBTicketsApi.Models;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -1251,6 +1253,487 @@ namespace QBTicketsApi.Services
             return GetCashierFromTransactionJson(
                 documents[0]
             );
+        }
+        public async Task<string> GetPayments(
+    string? fechaDesde = null,
+    string? fechaHasta = null)
+        {
+            var connection =
+                await _db.QuickBooksConnections
+                    .FirstOrDefaultAsync();
+
+            if (connection == null)
+            {
+                throw new Exception(
+                    "No hay conexión con QuickBooks."
+                );
+            }
+
+            if (connection.AccessTokenExpiresAt <=
+                DateTime.UtcNow.AddMinutes(5))
+            {
+                await RefreshToken();
+            }
+
+            connection =
+                await _db.QuickBooksConnections
+                    .FirstOrDefaultAsync();
+
+            if (connection == null)
+            {
+                throw new Exception(
+                    "No se pudo recuperar la conexión con QuickBooks."
+                );
+            }
+
+            var client =
+                _httpClientFactory.CreateClient();
+
+            client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue(
+                    "Bearer",
+                    connection.AccessToken
+                );
+
+            client.DefaultRequestHeaders.Accept.Clear();
+
+            client.DefaultRequestHeaders.Accept.Add(
+                new MediaTypeWithQualityHeaderValue(
+                    "application/json"
+                )
+            );
+
+            string whereClause =
+                BuildDateWhereClause(
+                    fechaDesde,
+                    fechaHasta
+                );
+
+            string queryText =
+                $"SELECT * FROM Payment{whereClause} MAXRESULTS 1000";
+
+            string query =
+                Uri.EscapeDataString(queryText);
+
+            string url =
+                $"https://quickbooks.api.intuit.com/v3/company/" +
+                $"{connection.RealmId}/query" +
+                $"?query={query}";
+
+            HttpResponseMessage response =
+                await client.GetAsync(url);
+
+            string responseText =
+                await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new Exception(
+                    "QuickBooks no pudo cargar los abonos.\n" +
+                    $"Código HTTP: {(int)response.StatusCode} " +
+                    $"{response.StatusCode}\n" +
+                    responseText
+                );
+            }
+
+            return responseText;
+        }
+
+        public async Task<List<CreditPaymentDto>>
+    GetCreditPaymentsListAsync(
+        string? fechaDesde = null,
+        string? fechaHasta = null)
+        {
+            string json =
+                await GetPayments(
+                    fechaDesde,
+                    fechaHasta
+                );
+
+            var result =
+                new List<CreditPaymentDto>();
+
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return result;
+            }
+
+            using JsonDocument doc =
+                JsonDocument.Parse(json);
+
+            if (!doc.RootElement.TryGetProperty(
+                    "QueryResponse",
+                    out JsonElement queryResponse))
+            {
+                return result;
+            }
+
+            if (!queryResponse.TryGetProperty(
+                    "Payment",
+                    out JsonElement payments) ||
+                payments.ValueKind != JsonValueKind.Array)
+            {
+                return result;
+            }
+
+            foreach (JsonElement payment in payments.EnumerateArray())
+            {
+                var dto =
+                    new CreditPaymentDto
+                    {
+                        PaymentId =
+                            payment.TryGetProperty(
+                                "Id",
+                                out JsonElement idElement)
+                                ? idElement.GetString() ?? ""
+                                : "",
+
+                        PaymentDate =
+                            payment.TryGetProperty(
+                                "TxnDate",
+                                out JsonElement dateElement) &&
+                            DateTime.TryParse(
+                                dateElement.GetString(),
+                                out DateTime paymentDate)
+                                ? paymentDate
+                                : DateTime.Today,
+
+                        CustomerName =
+                            payment.TryGetProperty(
+                                "CustomerRef",
+                                out JsonElement customerRef) &&
+                            customerRef.TryGetProperty(
+                                "name",
+                                out JsonElement customerNameElement)
+                                ? customerNameElement.GetString() ?? ""
+                                : "",
+
+                        ReferenceNumber =
+                            payment.TryGetProperty(
+                                "PaymentRefNum",
+                                out JsonElement referenceElement)
+                                ? referenceElement.GetString() ?? ""
+                                : "",
+
+                        TotalAmount =
+                            payment.TryGetProperty(
+                                "TotalAmt",
+                                out JsonElement totalElement) &&
+                            totalElement.TryGetDecimal(
+                                out decimal total)
+                                ? total
+                                : 0m
+                    };
+
+                if (payment.TryGetProperty(
+                        "PaymentMethodRef",
+                        out JsonElement paymentMethodRef) &&
+                    paymentMethodRef.TryGetProperty(
+                        "name",
+                        out JsonElement paymentMethodName))
+                {
+                    dto.PaymentMethod =
+                        paymentMethodName.GetString() ?? "";
+                }
+
+                if (payment.TryGetProperty(
+                        "Line",
+                        out JsonElement lines) &&
+                    lines.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (JsonElement line in lines.EnumerateArray())
+                    {
+                        if (!line.TryGetProperty(
+                                "LinkedTxn",
+                                out JsonElement linkedTransactions) ||
+                            linkedTransactions.ValueKind !=
+                                JsonValueKind.Array)
+                        {
+                            continue;
+                        }
+
+                        foreach (
+                            JsonElement linkedTransaction
+                            in linkedTransactions.EnumerateArray())
+                        {
+                            string transactionType =
+                                linkedTransaction.TryGetProperty(
+                                    "TxnType",
+                                    out JsonElement typeElement)
+                                    ? typeElement.GetString() ?? ""
+                                    : "";
+
+                            if (!transactionType.Equals(
+                                    "Invoice",
+                                    StringComparison.OrdinalIgnoreCase))
+                            {
+                                continue;
+                            }
+
+                            string invoiceId =
+                                linkedTransaction.TryGetProperty(
+                                    "TxnId",
+                                    out JsonElement invoiceIdElement)
+                                    ? invoiceIdElement.GetString() ?? ""
+                                    : "";
+
+                            if (!string.IsNullOrWhiteSpace(invoiceId))
+                            {
+                                dto.InvoiceIds.Add(invoiceId);
+                            }
+                        }
+                    }
+                }
+
+                /*
+                 * Solo consideramos abonos que estén vinculados
+                 * a una factura de crédito.
+                 */
+                if (dto.InvoiceIds.Count > 0)
+                {
+                    result.Add(dto);
+                }
+            }
+
+            return result
+                .OrderByDescending(x => x.PaymentDate)
+                .ToList();
+        }
+
+        public async Task<string> GetItemsAsync()
+        {
+            QuickBooksConnection? connection =
+                await _db.QuickBooksConnections
+                    .FirstOrDefaultAsync();
+
+            if (connection == null)
+            {
+                throw new Exception(
+                    "No hay conexión con QuickBooks."
+                );
+            }
+
+            if (connection.AccessTokenExpiresAt <=
+                DateTime.UtcNow.AddMinutes(5))
+            {
+                await RefreshToken();
+            }
+
+            connection =
+                await _db.QuickBooksConnections
+                    .FirstOrDefaultAsync();
+
+            if (connection == null)
+            {
+                throw new Exception(
+                    "No se pudo recuperar la conexión con QuickBooks."
+                );
+            }
+
+            var client =
+                _httpClientFactory.CreateClient();
+
+            client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue(
+                    "Bearer",
+                    connection.AccessToken
+                );
+
+            client.DefaultRequestHeaders.Accept.Clear();
+
+            client.DefaultRequestHeaders.Accept.Add(
+                new MediaTypeWithQualityHeaderValue(
+                    "application/json"
+                )
+            );
+
+            var allItems =
+                new List<JsonElement>();
+
+            int startPosition = 1;
+            const int maxResults = 1000;
+
+            while (true)
+            {
+                string queryText =
+                    "SELECT * FROM Item " +
+                    $"STARTPOSITION {startPosition} " +
+                    $"MAXRESULTS {maxResults}";
+
+                string query =
+                    Uri.EscapeDataString(queryText);
+
+                string url =
+                    $"https://quickbooks.api.intuit.com/v3/company/" +
+                    $"{connection.RealmId}/query?query={query}";
+
+                HttpResponseMessage response =
+                    await client.GetAsync(url);
+
+                string responseText =
+                    await response.Content.ReadAsStringAsync();
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    throw new Exception(
+                        "QuickBooks no pudo cargar los productos.\n" +
+                        $"Código HTTP: {(int)response.StatusCode} " +
+                        $"{response.StatusCode}\n" +
+                        responseText
+                    );
+                }
+
+                using JsonDocument pageDocument =
+                    JsonDocument.Parse(responseText);
+
+                if (!pageDocument.RootElement.TryGetProperty(
+                        "QueryResponse",
+                        out JsonElement queryResponse))
+                {
+                    break;
+                }
+
+                if (!queryResponse.TryGetProperty(
+                        "Item",
+                        out JsonElement items) ||
+                    items.ValueKind != JsonValueKind.Array)
+                {
+                    break;
+                }
+
+                int pageCount =
+                    items.GetArrayLength();
+
+                foreach (JsonElement item in items.EnumerateArray())
+                {
+                    allItems.Add(item.Clone());
+                }
+
+                if (pageCount < maxResults)
+                {
+                    break;
+                }
+
+                startPosition += maxResults;
+            }
+
+            return JsonSerializer.Serialize(new
+            {
+                QueryResponse = new
+                {
+                    Item = allItems
+                }
+            });
+        }
+
+        public async Task<List<QuickBooksItemReportDto>>
+            GetItemsForReportsAsync()
+        {
+            string json =
+                await GetItemsAsync();
+
+            var result =
+                new List<QuickBooksItemReportDto>();
+
+            using JsonDocument document =
+                JsonDocument.Parse(json);
+
+            if (!document.RootElement.TryGetProperty(
+                    "QueryResponse",
+                    out JsonElement queryResponse))
+            {
+                return result;
+            }
+
+            if (!queryResponse.TryGetProperty(
+                    "Item",
+                    out JsonElement items) ||
+                items.ValueKind != JsonValueKind.Array)
+            {
+                return result;
+            }
+
+            foreach (JsonElement item in items.EnumerateArray())
+            {
+                bool active =
+                    !item.TryGetProperty(
+                        "Active",
+                        out JsonElement activeElement) ||
+                    activeElement.ValueKind == JsonValueKind.True;
+
+                if (!active)
+                {
+                    continue;
+                }
+
+                string itemId =
+                    item.TryGetProperty(
+                        "Id",
+                        out JsonElement idElement)
+                        ? idElement.GetString() ?? ""
+                        : "";
+
+                string name =
+                    item.TryGetProperty(
+                        "Name",
+                        out JsonElement nameElement)
+                        ? nameElement.GetString() ?? ""
+                        : "";
+
+                string sku =
+                    item.TryGetProperty(
+                        "Sku",
+                        out JsonElement skuElement)
+                        ? skuElement.GetString() ?? ""
+                        : "";
+
+                decimal purchaseCost = 0m;
+
+                if (item.TryGetProperty(
+                        "PurchaseCost",
+                        out JsonElement costElement))
+                {
+                    costElement.TryGetDecimal(
+                        out purchaseCost
+                    );
+                }
+
+                decimal unitPrice = 0m;
+
+                if (item.TryGetProperty(
+                        "UnitPrice",
+                        out JsonElement priceElement))
+                {
+                    priceElement.TryGetDecimal(
+                        out unitPrice
+                    );
+                }
+
+                result.Add(
+                    new QuickBooksItemReportDto
+                    {
+                        ItemId = itemId,
+
+                        Name = string.IsNullOrWhiteSpace(name)
+                            ? "Producto"
+                            : name,
+
+                        /*
+                         * Temporalmente usamos SKU como marca.
+                         * Si el SKU está vacío aparecerá "Sin marca".
+                         */
+                        Brand = string.IsNullOrWhiteSpace(sku)
+                            ? "Sin marca"
+                            : sku,
+
+                        PurchaseCost = purchaseCost,
+
+                        UnitPrice = unitPrice
+                    }
+                );
+            }
+
+            return result;
         }
 
 
