@@ -183,6 +183,9 @@ namespace QBTicketsApi.Services
             string uuid =
                 registro.uuid;
 
+            string qrValue =
+                uuid;
+
             var serieNumero =
                 ExtractSerieYNumero(uuid);
 
@@ -273,7 +276,7 @@ namespace QBTicketsApi.Services
                     certificationDate,
 
                 FelQr =
-                    "",
+                    qrValue,
 
                 FelCertifierName =
                     certifierName,
@@ -304,7 +307,7 @@ namespace QBTicketsApi.Services
                     certificationDate,
 
                 Qr =
-                    "",
+                    qrValue,
 
                 CustomerNit =
                     customerNit,
