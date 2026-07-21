@@ -106,6 +106,26 @@ namespace QBTicketsApi.Services
              */
             if (existing != null)
             {
+                string existingQr =
+                    existing.FelQr ?? "";
+
+                /*
+                 * Las certificaciones anteriores quedaron con FelQr vacío.
+                 * Usamos el número de autorización FEL como contenido del QR.
+                 */
+                if (string.IsNullOrWhiteSpace(existingQr) &&
+                    !string.IsNullOrWhiteSpace(
+                        existing.FelAuthorizationNumber))
+                {
+                    existingQr =
+                        existing.FelAuthorizationNumber.Trim();
+
+                    existing.FelQr =
+                        existingQr;
+
+                    await _db.SaveChangesAsync();
+                }
+
                 return new FelResult
                 {
                     Serie =
