@@ -378,19 +378,9 @@ namespace QBTicketsApi.Services
                 );
             }
 
-            string requestId =
-                Guid.NewGuid()
-                    .ToString()
-                    .ToUpperInvariant();
-
             var requestXml =
                 new XElement(
                     "RetornaXMLRequest",
-
-                    new XAttribute(
-                        "id",
-                        requestId
-                    ),
 
                     new XElement(
                         "uuid",
