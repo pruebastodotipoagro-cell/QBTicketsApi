@@ -13,10 +13,18 @@ namespace QBTicketsApi.Controllers
     {
         private readonly QuickBooksService _quickBooksService;
 
+        private readonly FelCancellationService
+    _felCancellationService;
+
         public InvoicesController(
-            QuickBooksService quickBooksService)
+    QuickBooksService quickBooksService,
+    FelCancellationService felCancellationService)
         {
-            _quickBooksService = quickBooksService;
+            _quickBooksService =
+                quickBooksService;
+
+            _felCancellationService =
+                felCancellationService;
         }
 
         [HttpGet("quickbooks-test")]
@@ -253,6 +261,86 @@ namespace QBTicketsApi.Controllers
             }
         }
 
+        [HttpPost("{quickBooksId}/cancel")]
+        public async Task<IActionResult> CancelInvoice(
+    string quickBooksId,
+    [FromBody] CancelInvoiceRequest request)
+        {
+            try
+            {
+                if (request == null)
+                {
+                    return BadRequest(
+                        new
+                        {
+                            success = false,
+                            message =
+                                "No se recibió la solicitud de anulación."
+                        }
+                    );
+                }
+
+                string reason =
+                    (request.Reason ?? "")
+                        .Trim();
+
+                if (string.IsNullOrWhiteSpace(reason))
+                {
+                    return BadRequest(
+                        new
+                        {
+                            success = false,
+                            message =
+                                "Debe indicar el motivo de la anulación."
+                        }
+                    );
+                }
+
+                FelCancellationResult result =
+                    await _felCancellationService
+                        .CancelAsync(
+                            quickBooksId,
+                            reason
+                        );
+
+                return Ok(
+                    new
+                    {
+                        success =
+                            result.Success,
+
+                        message =
+                            result.Message,
+
+                        quickBooksId =
+                            result.QuickBooksId,
+
+                        originalAuthorizationNumber =
+                            result.OriginalAuthorizationNumber,
+
+                        cancellationAuthorizationNumber =
+                            result.CancellationAuthorizationNumber,
+
+                        cancellationReason =
+                            result.CancellationReason,
+
+                        cancellationDate =
+                            result.CancellationDate
+                    }
+                );
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(
+                    new
+                    {
+                        success = false,
+                        message = ex.Message
+                    }
+                );
+            }
+        }
+
         private List<InvoiceResponseDto>
             FilterInvoicesForCurrentUser(
                 List<InvoiceResponseDto> invoices)
@@ -333,5 +421,6 @@ namespace QBTicketsApi.Controllers
                    ) &&
                    canViewAll;
         }
+
     }
 }
