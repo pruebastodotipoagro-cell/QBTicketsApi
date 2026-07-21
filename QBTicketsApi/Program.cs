@@ -79,6 +79,14 @@ builder.Services.AddScoped<MegaprintService>();
 builder.Services.AddScoped<FelXmlBuilderService>();
 builder.Services.AddScoped<ReportsService>();
 builder.Services.AddScoped<CashMovementService>();
+builder.Services
+    .AddScoped<
+        FelCancellationXmlBuilderService
+    >();
+builder.Services
+    .AddScoped<
+        FelCancellationService
+    >();
 
 var app = builder.Build();
 

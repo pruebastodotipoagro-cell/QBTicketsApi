@@ -138,6 +138,411 @@ namespace QBTicketsApi.Services
             return (xmlCertificado, uuid);
         }
 
+        public async Task<(
+    string xmlAnulacionCertificado,
+    string uuidAnulacion
+)> AnularDocumentoAsync(
+    string xmlAnulacion,
+    string token)
+        {
+            if (string.IsNullOrWhiteSpace(xmlAnulacion))
+            {
+                throw new Exception(
+                    "El XML de anulación está vacío."
+                );
+            }
+
+            string url =
+                _config["Megaprint:AnulacionUrl"]
+                ?? "";
+
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                throw new Exception(
+                    "No está configurada la URL " +
+                    "Megaprint:AnulacionUrl."
+                );
+            }
+
+            string requestId =
+                Guid.NewGuid()
+                    .ToString()
+                    .ToUpperInvariant();
+
+            var requestXml =
+                new XElement(
+                    "AnulaDocumentoXMLRequest",
+
+                    new XAttribute(
+                        "id",
+                        requestId
+                    ),
+
+                    new XElement(
+                        "xml_dte",
+                        new XCData(
+                            xmlAnulacion
+                        )
+                    )
+                );
+
+            string body =
+                new XDeclaration(
+                    "1.0",
+                    "UTF-8",
+                    null
+                ) +
+                Environment.NewLine +
+                requestXml;
+
+            var client =
+                _httpClientFactory
+                    .CreateClient();
+
+            var request =
+                new HttpRequestMessage(
+                    HttpMethod.Post,
+                    url
+                );
+
+            request.Content =
+                new StringContent(
+                    body,
+                    Encoding.UTF8,
+                    "application/xml"
+                );
+
+            request.Headers.Authorization =
+                new AuthenticationHeaderValue(
+                    "Bearer",
+                    token
+                );
+
+            HttpResponseMessage response =
+                await client.SendAsync(
+                    request
+                );
+
+            string responseText =
+                await response.Content
+                    .ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new Exception(
+                    "Error HTTP anulando documento " +
+                    "en Megaprint: " +
+                    responseText
+                );
+            }
+
+            XDocument doc;
+
+            try
+            {
+                doc =
+                    XDocument.Parse(
+                        responseText
+                    );
+            }
+            catch
+            {
+                throw new Exception(
+                    "Megaprint devolvió una respuesta " +
+                    "inválida al anular:\n" +
+                    responseText
+                );
+            }
+
+            string tipoRespuesta =
+                doc.Descendants()
+                    .FirstOrDefault(
+                        element =>
+                            element.Name.LocalName
+                                .Equals(
+                                    "tipo_respuesta",
+                                    StringComparison
+                                        .OrdinalIgnoreCase
+                                )
+                    )
+                    ?.Value
+                ?? "1";
+
+            if (tipoRespuesta != "0")
+            {
+                string codigo =
+                    doc.Descendants()
+                        .FirstOrDefault(
+                            element =>
+                                element.Name.LocalName
+                                    .Equals(
+                                        "cod_error",
+                                        StringComparison
+                                            .OrdinalIgnoreCase
+                                    )
+                        )
+                        ?.Value
+                    ?? "sin código";
+
+                string descripcion =
+                    doc.Descendants()
+                        .FirstOrDefault(
+                            element =>
+                                element.Name.LocalName
+                                    .Equals(
+                                        "desc_error",
+                                        StringComparison
+                                            .OrdinalIgnoreCase
+                                    )
+                        )
+                        ?.Value
+                    ?? "Megaprint rechazó la anulación.";
+
+                throw new Exception(
+                    "Megaprint rechazó la anulación [" +
+                    codigo +
+                    "]: " +
+                    descripcion
+                );
+            }
+
+            string xmlCertificado =
+                doc.Descendants()
+                    .FirstOrDefault(
+                        element =>
+                            element.Name.LocalName
+                                .Equals(
+                                    "xml_dte",
+                                    StringComparison
+                                        .OrdinalIgnoreCase
+                                )
+                    )
+                    ?.Value
+                ?? "";
+
+            string uuidAnulacion =
+                doc.Descendants()
+                    .FirstOrDefault(
+                        element =>
+                            element.Name.LocalName
+                                .Equals(
+                                    "uuid",
+                                    StringComparison
+                                        .OrdinalIgnoreCase
+                                )
+                    )
+                    ?.Value
+                ?? "";
+
+            if (string.IsNullOrWhiteSpace(
+                uuidAnulacion))
+            {
+                throw new Exception(
+                    "Megaprint aceptó la solicitud, " +
+                    "pero no devolvió el UUID de anulación.\n" +
+                    responseText
+                );
+            }
+
+            return (
+                xmlCertificado,
+                uuidAnulacion
+            );
+        }
+
+        public async Task<string> RetornarXmlAsync(
+    string uuid,
+    string token)
+        {
+            uuid =
+                (uuid ?? "")
+                    .Trim()
+                    .ToUpperInvariant();
+
+            if (string.IsNullOrWhiteSpace(uuid))
+            {
+                throw new Exception(
+                    "Debe indicar el UUID del documento."
+                );
+            }
+
+            string url =
+                _config["Megaprint:RetornarXmlUrl"]
+                ?? "";
+
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                throw new Exception(
+                    "No está configurada la URL " +
+                    "Megaprint:RetornarXmlUrl."
+                );
+            }
+
+            string requestId =
+                Guid.NewGuid()
+                    .ToString()
+                    .ToUpperInvariant();
+
+            var requestXml =
+                new XElement(
+                    "RetornaXMLRequest",
+
+                    new XAttribute(
+                        "id",
+                        requestId
+                    ),
+
+                    new XElement(
+                        "uuid",
+                        uuid
+                    )
+                );
+
+            string body =
+                new XDeclaration(
+                    "1.0",
+                    "UTF-8",
+                    null
+                ) +
+                Environment.NewLine +
+                requestXml;
+
+            var client =
+                _httpClientFactory
+                    .CreateClient();
+
+            var request =
+                new HttpRequestMessage(
+                    HttpMethod.Post,
+                    url
+                );
+
+            request.Content =
+                new StringContent(
+                    body,
+                    Encoding.UTF8,
+                    "application/xml"
+                );
+
+            request.Headers.Authorization =
+                new AuthenticationHeaderValue(
+                    "Bearer",
+                    token
+                );
+
+            HttpResponseMessage response =
+                await client.SendAsync(
+                    request
+                );
+
+            string responseText =
+                await response.Content
+                    .ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new Exception(
+                    "Error HTTP obteniendo XML " +
+                    "de Megaprint: " +
+                    responseText
+                );
+            }
+
+            XDocument doc;
+
+            try
+            {
+                doc =
+                    XDocument.Parse(
+                        responseText
+                    );
+            }
+            catch
+            {
+                throw new Exception(
+                    "Megaprint devolvió una respuesta " +
+                    "inválida al consultar el XML:\n" +
+                    responseText
+                );
+            }
+
+            string tipoRespuesta =
+                doc.Descendants()
+                    .FirstOrDefault(
+                        element =>
+                            element.Name.LocalName
+                                .Equals(
+                                    "tipo_respuesta",
+                                    StringComparison
+                                        .OrdinalIgnoreCase
+                                )
+                    )
+                    ?.Value
+                ?? "1";
+
+            if (tipoRespuesta != "0")
+            {
+                string codigo =
+                    doc.Descendants()
+                        .FirstOrDefault(
+                            element =>
+                                element.Name.LocalName
+                                    .Equals(
+                                        "cod_error",
+                                        StringComparison
+                                            .OrdinalIgnoreCase
+                                    )
+                        )
+                        ?.Value
+                    ?? "sin código";
+
+                string descripcion =
+                    doc.Descendants()
+                        .FirstOrDefault(
+                            element =>
+                                element.Name.LocalName
+                                    .Equals(
+                                        "desc_error",
+                                        StringComparison
+                                            .OrdinalIgnoreCase
+                                    )
+                        )
+                        ?.Value
+                    ?? "Megaprint rechazó la consulta del XML.";
+
+                throw new Exception(
+                    "Megaprint rechazó la consulta [" +
+                    codigo +
+                    "]: " +
+                    descripcion
+                );
+            }
+
+            string xmlCertificado =
+                doc.Descendants()
+                    .FirstOrDefault(
+                        element =>
+                            element.Name.LocalName
+                                .Equals(
+                                    "xml_dte",
+                                    StringComparison
+                                        .OrdinalIgnoreCase
+                                )
+                    )
+                    ?.Value
+                ?? "";
+
+            if (string.IsNullOrWhiteSpace(
+                xmlCertificado))
+            {
+                throw new Exception(
+                    "Megaprint no devolvió el XML certificado."
+                );
+            }
+
+            return xmlCertificado;
+        }
+
         public async Task<string> RetornarNombreClienteAsync(string nit)
         {
             if (string.IsNullOrWhiteSpace(nit))
