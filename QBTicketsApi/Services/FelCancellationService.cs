@@ -24,10 +24,15 @@ namespace QBTicketsApi.Services
     public class FelCancellationService
     {
         private readonly AppDbContext _db;
-        private readonly MegaprintService _megaprintService;
+
+        private readonly MegaprintService
+            _megaprintService;
+
         private readonly FelCancellationXmlBuilderService
             _xmlBuilder;
-        private readonly IConfiguration _config;
+
+        private readonly IConfiguration
+            _config;
 
         public FelCancellationService(
             AppDbContext db,
@@ -35,10 +40,17 @@ namespace QBTicketsApi.Services
             FelCancellationXmlBuilderService xmlBuilder,
             IConfiguration config)
         {
-            _db = db;
-            _megaprintService = megaprintService;
-            _xmlBuilder = xmlBuilder;
-            _config = config;
+            _db =
+                db;
+
+            _megaprintService =
+                megaprintService;
+
+            _xmlBuilder =
+                xmlBuilder;
+
+            _config =
+                config;
         }
 
         public async Task<FelCancellationResult>
@@ -182,14 +194,17 @@ namespace QBTicketsApi.Services
                         .Replace("-", "")
                         .Replace(" ", "");
 
+            /*
+             * Solicita un token válido de Megaprint.
+             */
             string token =
                 await _megaprintService
                     .SolicitarTokenAsync();
 
             /*
-             * Recuperamos el XML original certificado
+             * Recupera el XML certificado original
              * para obtener la fecha y hora exactas
-             * con las que se certificó el documento.
+             * del documento que se anulará.
              */
             string certifiedXml =
                 await _megaprintService
@@ -204,6 +219,9 @@ namespace QBTicketsApi.Services
                         certifiedXml
                     );
 
+            /*
+             * Construye el XML de anulación.
+             */
             string cancellationXml =
                 _xmlBuilder
                     .BuildCancellationXml(
@@ -214,10 +232,26 @@ namespace QBTicketsApi.Services
                         reason
                     );
 
+            /*
+             * La anulación también necesita la firma
+             * electrónica del emisor antes de enviarse
+             * al endpoint de anulación.
+             */
+            string signedCancellationXml =
+                await _megaprintService
+                    .SolicitarFirmaAsync(
+                        cancellationXml,
+                        token
+                    );
+
+            /*
+             * Envía el XML firmado al endpoint
+             * de anulación de Megaprint.
+             */
             var cancellationResponse =
                 await _megaprintService
                     .AnularDocumentoAsync(
-                        cancellationXml,
+                        signedCancellationXml,
                         token
                     );
 
@@ -257,7 +291,8 @@ namespace QBTicketsApi.Services
                 cancellationUuid;
 
             invoice.FelCancellationXml =
-                certifiedCancellationXml ?? "";
+                certifiedCancellationXml
+                ?? "";
 
             await _db.SaveChangesAsync();
 
