@@ -526,7 +526,10 @@ namespace QBTicketsApi.Services
             };
         }
 
-        public async Task<CashierCutDto> GetCashierCutAsync(String cashierName,DateTime date,decimal openingBalanceFromScreen)
+        public async Task<CashierCutDto> GetCashierCutAsync(
+    string cashierName,
+    DateTime date,
+    decimal openingBalanceFromScreen)
         {
             if (string.IsNullOrWhiteSpace(cashierName))
             {
@@ -543,6 +546,19 @@ namespace QBTicketsApi.Services
 
             string dateText =
                 selectedDate.ToString("yyyy-MM-dd");
+
+            /*
+             * PostgreSQL usa timestamp with time zone,
+             * por eso las fechas de la consulta deben ser UTC.
+             */
+            DateTime dateUtc =
+                DateTime.SpecifyKind(
+                    selectedDate,
+                    DateTimeKind.Utc
+                );
+
+            DateTime nextDateUtc =
+                dateUtc.AddDays(1);
 
             List<InvoiceResponseDto> cashReceipts =
                 await _quickBooksService
@@ -562,9 +578,9 @@ namespace QBTicketsApi.Services
                     )
                     .ToList();
 
-            decimal cashSales = 0;
-            decimal checkSales = 0;
-            decimal creditCardSales = 0;
+            decimal cashSales = 0m;
+            decimal checkSales = 0m;
+            decimal creditCardSales = 0m;
 
             foreach (InvoiceResponseDto sale in cashReceipts)
             {
@@ -578,28 +594,41 @@ namespace QBTicketsApi.Services
                     "Efectivo",
                     StringComparison.OrdinalIgnoreCase))
                 {
-                    cashSales += sale.Total;
+                    cashSales +=
+                        sale.Total;
                 }
                 else if (paymentMethod.Equals(
                     "Cheque",
                     StringComparison.OrdinalIgnoreCase))
                 {
-                    checkSales += sale.Total;
+                    checkSales +=
+                        sale.Total;
                 }
                 else if (paymentMethod.Equals(
                     "Tarjeta de crédito",
                     StringComparison.OrdinalIgnoreCase))
                 {
-                    creditCardSales += sale.Total;
+                    creditCardSales +=
+                        sale.Total;
                 }
             }
 
             decimal storedOpeningBalance =
-                await _cashMovementService
-                    .GetOpeningBalanceAsync(
-                        finalCashierName,
-                        selectedDate
-                    );
+                await _db.CashMovements
+                    .AsNoTracking()
+                    .Where(x =>
+                        x.MovementType == "OPENING_BALANCE" &&
+                        x.CashierName == finalCashierName &&
+                        x.MovementDate >= dateUtc &&
+                        x.MovementDate < nextDateUtc
+                    )
+                    .OrderByDescending(x =>
+                        x.MovementDate
+                    )
+                    .Select(x =>
+                        x.Amount
+                    )
+                    .FirstOrDefaultAsync();
 
             decimal openingBalance =
                 openingBalanceFromScreen;
@@ -611,22 +640,35 @@ namespace QBTicketsApi.Services
             }
 
             decimal totalExpenses =
-                await _cashMovementService
-                    .GetExpensesAsync(
-                        finalCashierName,
-                        selectedDate
+                await _db.CashMovements
+                    .AsNoTracking()
+                    .Where(x =>
+                        x.MovementType == "EXPENSE" &&
+                        x.CashierName == finalCashierName &&
+                        x.MovementDate >= dateUtc &&
+                        x.MovementDate < nextDateUtc
+                    )
+                    .SumAsync(x =>
+                        x.Amount
                     );
 
-            /*
-             * Los abonos a créditos todavía quedan en cero
-             * hasta agregar la consulta de Payment en QuickBooks.
-             */
-            List<CreditPaymentDto> payments =await _quickBooksService.GetCreditPaymentsListAsync(dateText,dateText);
+            List<CreditPaymentDto> payments =
+                await _quickBooksService
+                    .GetCreditPaymentsListAsync(
+                        dateText,
+                        dateText
+                    );
 
-            decimal creditPayments = 0m;
+            decimal creditPayments =
+                0m;
 
             foreach (CreditPaymentDto payment in payments)
             {
+                if (payment.InvoiceIds == null)
+                {
+                    continue;
+                }
+
                 foreach (string invoiceId in payment.InvoiceIds)
                 {
                     string invoiceCashier =
@@ -636,11 +678,13 @@ namespace QBTicketsApi.Services
                             );
 
                     if (string.Equals(
-                            invoiceCashier?.Trim(),
-                            finalCashierName,
-                            StringComparison.OrdinalIgnoreCase))
+                        invoiceCashier?.Trim(),
+                        finalCashierName,
+                        StringComparison.OrdinalIgnoreCase))
                     {
-                        creditPayments += payment.TotalAmount;
+                        creditPayments +=
+                            payment.TotalAmount;
+
                         break;
                     }
                 }
@@ -675,8 +719,8 @@ namespace QBTicketsApi.Services
         }
 
         public async Task<GeneralCutDto> GetGeneralCutAsync(
-            DateTime startDate,
-            DateTime endDate)
+    DateTime startDate,
+    DateTime endDate)
         {
             DateTime finalStartDate =
                 startDate.Date;
@@ -692,10 +736,30 @@ namespace QBTicketsApi.Services
             }
 
             string startText =
-                finalStartDate.ToString("yyyy-MM-dd");
+                finalStartDate.ToString(
+                    "yyyy-MM-dd"
+                );
 
             string endText =
-                finalEndDate.ToString("yyyy-MM-dd");
+                finalEndDate.ToString(
+                    "yyyy-MM-dd"
+                );
+
+            /*
+             * PostgreSQL requiere DateTime UTC para columnas
+             * timestamp with time zone.
+             */
+            DateTime startUtc =
+                DateTime.SpecifyKind(
+                    finalStartDate,
+                    DateTimeKind.Utc
+                );
+
+            DateTime endUtc =
+                DateTime.SpecifyKind(
+                    finalEndDate.AddDays(1),
+                    DateTimeKind.Utc
+                );
 
             List<InvoiceResponseDto> cashReceipts =
                 await _quickBooksService
@@ -720,19 +784,22 @@ namespace QBTicketsApi.Services
                     "Efectivo",
                     StringComparison.OrdinalIgnoreCase))
                 {
-                    cashSales += sale.Total;
+                    cashSales +=
+                        sale.Total;
                 }
                 else if (paymentMethod.Equals(
                     "Cheque",
                     StringComparison.OrdinalIgnoreCase))
                 {
-                    checkSales += sale.Total;
+                    checkSales +=
+                        sale.Total;
                 }
                 else if (paymentMethod.Equals(
                     "Tarjeta de crédito",
                     StringComparison.OrdinalIgnoreCase))
                 {
-                    creditCardSales += sale.Total;
+                    creditCardSales +=
+                        sale.Total;
                 }
             }
 
@@ -741,24 +808,24 @@ namespace QBTicketsApi.Services
                     .AsNoTracking()
                     .Where(x =>
                         x.MovementType == "EXPENSE" &&
-                        x.MovementDate.Date >= finalStartDate &&
-                        x.MovementDate.Date <= finalEndDate
+                        x.MovementDate >= startUtc &&
+                        x.MovementDate < endUtc
                     )
-                    .SumAsync(x => x.Amount);
+                    .SumAsync(x =>
+                        x.Amount
+                    );
 
-            /*
-             * Los abonos se conectarán con Payment
-             * de QuickBooks en el siguiente paso.
-             */
             List<CreditPaymentDto> payments =
-    await _quickBooksService
-        .GetCreditPaymentsListAsync(
-            startText,
-            endText
-        );
+                await _quickBooksService
+                    .GetCreditPaymentsListAsync(
+                        startText,
+                        endText
+                    );
 
             decimal creditPayments =
-                payments.Sum(x => x.TotalAmount);
+                payments.Sum(x =>
+                    x.TotalAmount
+                );
 
             decimal totalSales =
                 cashSales +
@@ -793,6 +860,7 @@ namespace QBTicketsApi.Services
                     totalSales
             };
         }
+
         public async Task<ProductSalesReportResponseDto>
     GetProductSalesReportAsync(
         DateTime startDate,
