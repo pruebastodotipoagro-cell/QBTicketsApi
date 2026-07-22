@@ -386,7 +386,12 @@ namespace QBTicketsApi.Services
             string queryText = $"SELECT * FROM Invoice{whereClause} MAXRESULTS 200";
 
             string query = Uri.EscapeDataString(queryText);
-            string url = $"https://quickbooks.api.intuit.com/v3/company/{connection.RealmId}/query?query={query}";
+
+            string url =
+                $"https://quickbooks.api.intuit.com/v3/company/" +
+                $"{connection.RealmId}/query" +
+                $"?query={query}" +
+                $"&include=enhancedAllCustomFields";
 
             var response = await client.GetAsync(url);
 
@@ -534,8 +539,16 @@ namespace QBTicketsApi.Services
                 new MediaTypeWithQualityHeaderValue("application/json")
             );
 
-            string query = Uri.EscapeDataString($"SELECT * FROM Invoice WHERE Id = '{id}'");
-            string url = $"https://quickbooks.api.intuit.com/v3/company/{connection.RealmId}/query?query={query}";
+            string query =
+                Uri.EscapeDataString(
+                    $"SELECT * FROM Invoice WHERE Id = '{id}'"
+                );
+
+            string url =
+                $"https://quickbooks.api.intuit.com/v3/company/" +
+                $"{connection.RealmId}/query" +
+                $"?query={query}" +
+                $"&include=enhancedAllCustomFields";
 
             var response = await client.GetAsync(url);
             return await response.Content.ReadAsStringAsync();
