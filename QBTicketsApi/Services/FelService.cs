@@ -166,6 +166,49 @@ namespace QBTicketsApi.Services
                 };
             }
 
+            string nitNormalizado =
+                string.IsNullOrWhiteSpace(
+                    nitOverride
+                )
+                    ? "CF"
+                    : nitOverride
+                        .Trim()
+                        .Replace("-", "");
+
+            string? nombreFiscalNormalizado =
+                string.IsNullOrWhiteSpace(
+                    customerNameOverride
+                )
+                    ? null
+                    : customerNameOverride.Trim();
+
+            if (nitNormalizado.Equals(
+                "CF",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                nombreFiscalNormalizado =
+                    "Consumidor Final";
+            }
+            else
+            {
+                if (string.IsNullOrWhiteSpace(
+                    nombreFiscalNormalizado))
+                {
+                    throw new Exception(
+                        "Debe verificar el NIT antes de certificar."
+                    );
+                }
+
+                if (nombreFiscalNormalizado.Equals(
+                    "Consumidor Final",
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new Exception(
+                        "El nombre fiscal no corresponde al NIT indicado."
+                    );
+                }
+            }
+
             discounts ??=
                 new List<ItemDiscountRequest>();
 
@@ -174,8 +217,8 @@ namespace QBTicketsApi.Services
             string xmlSinFirmar =
                 _xmlBuilder.BuildFactXml(
                     quickBooksJson,
-                    nitOverride,
-                    customerNameOverride,
+                    nitNormalizado,
+                    nombreFiscalNormalizado,
                     discounts
                 );
 
@@ -233,12 +276,12 @@ namespace QBTicketsApi.Services
                 ParseResumen(
                     quickBooksJson,
                     discounts,
-                    customerNameOverride
+                    nombreFiscalNormalizado
                 );
 
             string customerNit =
                 ObtenerNitCliente(
-                    nitOverride,
+                    nitNormalizado,
                     resumen.customerName
                 );
 

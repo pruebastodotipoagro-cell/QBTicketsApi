@@ -91,6 +91,25 @@ namespace QBTicketsApi.Controllers
                     nombreFiscal = "Consumidor Final";
                 }
 
+                if (certifyFel)
+                {
+                    string? fiscalError =
+                        ValidarDatosFiscalesParaCertificar(
+                            nitFinal,
+                            nombreFiscal
+                        );
+
+                    if (!string.IsNullOrWhiteSpace(
+                        fiscalError))
+                    {
+                        return BadRequest(new
+                        {
+                            success = false,
+                            error = fiscalError
+                        });
+                    }
+                }
+
                 if (!certifyFel)
                 {
                     byte[] recibo =
@@ -229,6 +248,25 @@ namespace QBTicketsApi.Controllers
                         ? null
                         : request.CustomerName.Trim();
 
+                if (request.CertifyFel)
+                {
+                    string? fiscalError =
+                        ValidarDatosFiscalesParaCertificar(
+                            nitFinal,
+                            nombreFiscal
+                        );
+
+                    if (!string.IsNullOrWhiteSpace(
+                        fiscalError))
+                    {
+                        return BadRequest(new
+                        {
+                            success = false,
+                            error = fiscalError
+                        });
+                    }
+                }
+
                 if (!request.CertifyFel)
                 {
                     byte[] recibo =
@@ -339,6 +377,36 @@ namespace QBTicketsApi.Controllers
             return string.IsNullOrWhiteSpace(nitLimpio)
                 ? "CF"
                 : nitLimpio;
+        }
+
+        private static string?
+            ValidarDatosFiscalesParaCertificar(
+                string nit,
+                string? customerName)
+        {
+            if (nit.Equals(
+                "CF",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            if (string.IsNullOrWhiteSpace(
+                customerName))
+            {
+                return
+                    "Debe verificar el NIT antes de certificar.";
+            }
+
+            if (customerName.Trim().Equals(
+                "Consumidor Final",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                return
+                    "El nombre fiscal no corresponde al NIT indicado.";
+            }
+
+            return null;
         }
 
         private static string? ValidarDescuentos(
