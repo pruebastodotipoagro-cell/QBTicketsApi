@@ -560,9 +560,9 @@ namespace QBTicketsApi.Services
         }
 
         public async Task<CashierCutDto> GetCashierCutAsync(
-    string cashierName,
-    DateTime date,
-    decimal openingBalanceFromScreen)
+            string cashierName,
+            DateTime date,
+            decimal openingBalanceFromScreen)
         {
             if (string.IsNullOrWhiteSpace(cashierName))
             {
@@ -578,12 +578,10 @@ namespace QBTicketsApi.Services
                 date.Date;
 
             string dateText =
-                selectedDate.ToString("yyyy-MM-dd");
+                selectedDate.ToString(
+                    "yyyy-MM-dd"
+                );
 
-            /*
-             * PostgreSQL usa timestamp with time zone,
-             * por eso las fechas de la consulta deben ser UTC.
-             */
             DateTime dateUtc =
                 DateTime.SpecifyKind(
                     selectedDate,
@@ -611,16 +609,57 @@ namespace QBTicketsApi.Services
                     )
                     .ToList();
 
+            List<string> receiptIds =
+                cashReceipts
+                    .Select(x => x.QbInvoiceId)
+                    .Where(x =>
+                        !string.IsNullOrWhiteSpace(x)
+                    )
+                    .Distinct()
+                    .ToList();
+
+            HashSet<string> cancelledIds =
+                (
+                    await _db.Invoices
+                        .AsNoTracking()
+                        .Where(x =>
+                            receiptIds.Contains(
+                                x.QuickBooksId
+                            ) &&
+                            x.IsCancelled
+                        )
+                        .Select(x =>
+                            x.QuickBooksId
+                        )
+                        .ToListAsync()
+                )
+                .ToHashSet(
+                    StringComparer.OrdinalIgnoreCase
+                );
+
+            cashReceipts =
+                cashReceipts
+                    .Where(x =>
+                        !cancelledIds.Contains(
+                            x.QbInvoiceId
+                        )
+                    )
+                    .ToList();
+
             decimal cashSales = 0m;
             decimal checkSales = 0m;
             decimal creditCardSales = 0m;
 
-            foreach (InvoiceResponseDto sale in cashReceipts)
+            foreach (
+                InvoiceResponseDto sale
+                in cashReceipts)
             {
                 string paymentMethod =
-                    await GetPaymentMethodAsync(
-                        sale.QbInvoiceId,
-                        sale.SaleType
+                    NormalizePaymentMethod(
+                        await GetPaymentMethodAsync(
+                            sale.QbInvoiceId,
+                            sale.SaleType
+                        )
                     );
 
                 if (paymentMethod.Equals(
@@ -650,10 +689,14 @@ namespace QBTicketsApi.Services
                 await _db.CashMovements
                     .AsNoTracking()
                     .Where(x =>
-                        x.MovementType == "OPENING_BALANCE" &&
-                        x.CashierName == finalCashierName &&
-                        x.MovementDate >= dateUtc &&
-                        x.MovementDate < nextDateUtc
+                        x.MovementType ==
+                            "OPENING_BALANCE" &&
+                        x.CashierName ==
+                            finalCashierName &&
+                        x.MovementDate >=
+                            dateUtc &&
+                        x.MovementDate <
+                            nextDateUtc
                     )
                     .OrderByDescending(x =>
                         x.MovementDate
@@ -676,10 +719,14 @@ namespace QBTicketsApi.Services
                 await _db.CashMovements
                     .AsNoTracking()
                     .Where(x =>
-                        x.MovementType == "EXPENSE" &&
-                        x.CashierName == finalCashierName &&
-                        x.MovementDate >= dateUtc &&
-                        x.MovementDate < nextDateUtc
+                        x.MovementType ==
+                            "EXPENSE" &&
+                        x.CashierName ==
+                            finalCashierName &&
+                        x.MovementDate >=
+                            dateUtc &&
+                        x.MovementDate <
+                            nextDateUtc
                     )
                     .SumAsync(x =>
                         x.Amount
@@ -693,35 +740,17 @@ namespace QBTicketsApi.Services
                     );
 
             decimal creditPayments =
-                0m;
-
-            foreach (CreditPaymentDto payment in payments)
-            {
-                if (payment.InvoiceIds == null)
-                {
-                    continue;
-                }
-
-                foreach (string invoiceId in payment.InvoiceIds)
-                {
-                    string invoiceCashier =
-                        await _quickBooksService
-                            .GetDocumentCashierNameAsync(
-                                invoiceId
-                            );
-
-                    if (string.Equals(
-                        invoiceCashier?.Trim(),
-                        finalCashierName,
-                        StringComparison.OrdinalIgnoreCase))
-                    {
-                        creditPayments +=
-                            payment.TotalAmount;
-
-                        break;
-                    }
-                }
-            }
+                payments
+                    .Where(x =>
+                        string.Equals(
+                            x.CashierName?.Trim(),
+                            finalCashierName,
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                    )
+                    .Sum(x =>
+                        x.TotalAmount
+                    );
 
             return new CashierCutDto
             {
@@ -752,8 +781,8 @@ namespace QBTicketsApi.Services
         }
 
         public async Task<GeneralCutDto> GetGeneralCutAsync(
-    DateTime startDate,
-    DateTime endDate)
+            DateTime startDate,
+            DateTime endDate)
         {
             DateTime finalStartDate =
                 startDate.Date;
@@ -778,10 +807,6 @@ namespace QBTicketsApi.Services
                     "yyyy-MM-dd"
                 );
 
-            /*
-             * PostgreSQL requiere DateTime UTC para columnas
-             * timestamp with time zone.
-             */
             DateTime startUtc =
                 DateTime.SpecifyKind(
                     finalStartDate,
@@ -801,38 +826,37 @@ namespace QBTicketsApi.Services
                         endText
                     );
 
-            decimal cashSales = 0;
-            decimal checkSales = 0;
-            decimal creditCardSales = 0;
+            decimal cashSales = 0m;
+            decimal checkSales = 0m;
+            decimal creditCardSales = 0m;
 
             foreach (InvoiceResponseDto sale in cashReceipts)
             {
                 string paymentMethod =
-                    await GetPaymentMethodAsync(
-                        sale.QbInvoiceId,
-                        sale.SaleType
+                    NormalizePaymentMethod(
+                        await GetPaymentMethodAsync(
+                            sale.QbInvoiceId,
+                            sale.SaleType
+                        )
                     );
 
                 if (paymentMethod.Equals(
                     "Efectivo",
                     StringComparison.OrdinalIgnoreCase))
                 {
-                    cashSales +=
-                        sale.Total;
+                    cashSales += sale.Total;
                 }
                 else if (paymentMethod.Equals(
                     "Cheque",
                     StringComparison.OrdinalIgnoreCase))
                 {
-                    checkSales +=
-                        sale.Total;
+                    checkSales += sale.Total;
                 }
                 else if (paymentMethod.Equals(
                     "Tarjeta de crédito",
                     StringComparison.OrdinalIgnoreCase))
                 {
-                    creditCardSales +=
-                        sale.Total;
+                    creditCardSales += sale.Total;
                 }
             }
 
@@ -844,9 +868,7 @@ namespace QBTicketsApi.Services
                         x.MovementDate >= startUtc &&
                         x.MovementDate < endUtc
                     )
-                    .SumAsync(x =>
-                        x.Amount
-                    );
+                    .SumAsync(x => x.Amount);
 
             List<CreditPaymentDto> payments =
                 await _quickBooksService
