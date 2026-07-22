@@ -182,8 +182,20 @@ namespace QBTicketsApi.Services
                 );
             }
 
+            /*
+             * El total incluye ventas CERTIFICADAS y ventas ENVIO.
+             * Solo se excluyen las facturas ANULADAS.
+             */
             response.Total =
-                response.Sales.Sum(x => x.Total);
+                response.Sales
+                    .Where(x =>
+                        !string.Equals(
+                            x.Status,
+                            "ANULADA",
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                    )
+                    .Sum(x => x.Total);
 
             return response;
         }
