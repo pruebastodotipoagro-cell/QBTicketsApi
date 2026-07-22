@@ -412,6 +412,11 @@ namespace QBTicketsApi.Services
             if (!queryResponse.TryGetProperty("Invoice", out var invoices))
                 return result;
 
+            var customerNitCache =
+                new Dictionary<string, string>(
+                    StringComparer.OrdinalIgnoreCase
+                );
+
             foreach (var inv in invoices.EnumerateArray())
             {
                 string id = inv.TryGetProperty("Id", out var idValue) ? idValue.GetString() ?? "" : "";
@@ -420,9 +425,32 @@ namespace QBTicketsApi.Services
                 string cashierName =
                     GetCashierFromTransactionJson(inv);
 
-                string customerName = "Consumidor Final";
-                if (inv.TryGetProperty("CustomerRef", out var customerRef))
-                    customerName = customerRef.TryGetProperty("name", out var nameValue) ? nameValue.GetString() ?? customerName : customerName;
+                string customerName =
+                    "Consumidor Final";
+
+                string customerId =
+                    "";
+
+                if (inv.TryGetProperty(
+                        "CustomerRef",
+                        out var customerRef))
+                {
+                    customerName =
+                        customerRef.TryGetProperty(
+                            "name",
+                            out var nameValue)
+                            ? nameValue.GetString()
+                                ?? customerName
+                            : customerName;
+
+                    customerId =
+                        customerRef.TryGetProperty(
+                            "value",
+                            out var customerIdValue)
+                            ? customerIdValue.GetString()
+                                ?? ""
+                            : "";
+                }
 
                 DateTime issueDate = DateTime.UtcNow;
                 if (inv.TryGetProperty("TxnDate", out var dateValue))
@@ -466,15 +494,63 @@ namespace QBTicketsApi.Services
                 else
                 {
                     customerNit =
-                        _customerLookupService.GetNit(customerName);
+                        "";
 
-                    if (string.IsNullOrWhiteSpace(customerNit))
+                    if (!string.IsNullOrWhiteSpace(
+                        customerId))
                     {
-                        customerNit = "CF";
+                        if (!customerNitCache.TryGetValue(
+                                customerId,
+                                out customerNit))
+                        {
+                            customerNit =
+                                await GetCustomerNitForInvoiceAsync(
+                                    customerId
+                                );
+
+                            customerNitCache[
+                                customerId
+                            ] =
+                                customerNit;
+                        }
                     }
 
-                    customerNameFinal = customerName;
-                    totalFinal = total;
+                    /*
+                     * Como respaldo conservamos el lookup anterior.
+                     * La fuente principal ahora es el campo
+                     * personalizado NIT del cliente en QuickBooks.
+                     */
+                    if (string.IsNullOrWhiteSpace(
+                            customerNit) ||
+                        customerNit.Equals(
+                            "CF",
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        string lookupNit =
+                            _customerLookupService.GetNit(
+                                customerName
+                            );
+
+                        if (!string.IsNullOrWhiteSpace(
+                            lookupNit))
+                        {
+                            customerNit =
+                                lookupNit;
+                        }
+                    }
+
+                    if (string.IsNullOrWhiteSpace(
+                        customerNit))
+                    {
+                        customerNit =
+                            "CF";
+                    }
+
+                    customerNameFinal =
+                        customerName;
+
+                    totalFinal =
+                        total;
                 }
 
                 result.Add(new InvoiceResponseDto
@@ -817,6 +893,66 @@ namespace QBTicketsApi.Services
 
             return result;
         }
+        private async Task<string>
+            GetCustomerNitForInvoiceAsync(
+                string customerId)
+        {
+            if (string.IsNullOrWhiteSpace(
+                customerId))
+            {
+                return "CF";
+            }
+
+            try
+            {
+                string customerJson =
+                    await GetCustomerByIdAsync(
+                        customerId
+                    );
+
+                if (string.IsNullOrWhiteSpace(
+                    customerJson))
+                {
+                    return "CF";
+                }
+
+                using JsonDocument document =
+                    JsonDocument.Parse(
+                        customerJson
+                    );
+
+                if (!document.RootElement
+                    .TryGetProperty(
+                        "QueryResponse",
+                        out JsonElement queryResponse))
+                {
+                    return "CF";
+                }
+
+                if (!queryResponse.TryGetProperty(
+                        "Customer",
+                        out JsonElement customers) ||
+                    customers.ValueKind !=
+                        JsonValueKind.Array ||
+                    customers.GetArrayLength() == 0)
+                {
+                    return "CF";
+                }
+
+                return GetNitFromCustomerJson(
+                    customers[0]
+                );
+            }
+            catch
+            {
+                /*
+                 * No bloqueamos la carga del dashboard
+                 * si QuickBooks no devuelve el cliente.
+                 */
+                return "CF";
+            }
+        }
+
         public async Task<string> GetCustomerByIdAsync(
     string customerId)
         {
