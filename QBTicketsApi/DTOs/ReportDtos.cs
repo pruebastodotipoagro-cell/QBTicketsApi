@@ -105,8 +105,6 @@
             public decimal CheckSales { get; set; }
 
             public decimal CreditCardSales { get; set; }
-
-            public decimal CreditPayments { get; set; }
         }
 
         public class GeneralCutDto

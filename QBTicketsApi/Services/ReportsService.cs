@@ -732,26 +732,6 @@ namespace QBTicketsApi.Services
                         x.Amount
                     );
 
-            List<CreditPaymentDto> payments =
-                await _quickBooksService
-                    .GetCreditPaymentsListAsync(
-                        dateText,
-                        dateText
-                    );
-
-            decimal creditPayments =
-                payments
-                    .Where(x =>
-                        string.Equals(
-                            x.CashierName?.Trim(),
-                            finalCashierName,
-                            StringComparison.OrdinalIgnoreCase
-                        )
-                    )
-                    .Sum(x =>
-                        x.TotalAmount
-                    );
-
             return new CashierCutDto
             {
                 Date =
@@ -773,10 +753,7 @@ namespace QBTicketsApi.Services
                     checkSales,
 
                 CreditCardSales =
-                    creditCardSales,
-
-                CreditPayments =
-                    creditPayments
+                    creditCardSales
             };
         }
 
