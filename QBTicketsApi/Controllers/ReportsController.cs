@@ -12,17 +12,16 @@ namespace QBTicketsApi.Controllers
     public class ReportsController : ControllerBase
     {
         private readonly ReportsService _reportsService;
-        private readonly QuickBooksService _quickBooksService;
 
         public ReportsController(
-            ReportsService reportsService,
-            QuickBooksService quickBooksService)
+            ReportsService reportsService)
         {
-            _reportsService = reportsService;
-            _quickBooksService = quickBooksService;
+            _reportsService =
+                reportsService;
         }
 
-        // GET /api/reports/sales?desde=2026-07-01&hasta=2026-07-20
+        // Todos los usuarios autenticados pueden ver
+        // el reporte completo de ventas.
         [HttpGet("sales")]
         public async Task<IActionResult> GetSales(
             [FromQuery] string? desde = null,
@@ -37,26 +36,6 @@ namespace QBTicketsApi.Controllers
                             hasta
                         );
 
-                if (!CanViewAllSales())
-                {
-                    string cashierName =
-                        GetCurrentCashierName();
-
-                    result.Sales =
-                        result.Sales
-                            .Where(x =>
-                                string.Equals(
-                                    x.CashierName?.Trim(),
-                                    cashierName,
-                                    StringComparison.OrdinalIgnoreCase
-                                )
-                            )
-                            .ToList();
-
-                    result.Total =
-                        result.Sales.Sum(x => x.Total);
-                }
-
                 return Ok(result);
             }
             catch (Exception ex)
@@ -69,26 +48,14 @@ namespace QBTicketsApi.Controllers
             }
         }
 
-        // GET /api/reports/sales/11724/detail
+        // Todos los usuarios autenticados pueden abrir
+        // el detalle desde Reportes.
         [HttpGet("sales/{id}/detail")]
         public async Task<IActionResult> GetSaleDetail(
             string id)
         {
             try
             {
-                if (!await UserCanAccessDocumentAsync(id))
-                {
-                    return StatusCode(
-                        StatusCodes.Status403Forbidden,
-                        new
-                        {
-                            success = false,
-                            error =
-                                "No tiene permiso para consultar esta venta."
-                        }
-                    );
-                }
-
                 SaleDetailDto result =
                     await _reportsService
                         .GetSaleDetailAsync(id);
@@ -105,7 +72,8 @@ namespace QBTicketsApi.Controllers
             }
         }
 
-        // POST /api/reports/sales/11724/retry-certification
+        // Todos los usuarios autenticados pueden reintentar
+        // una certificación pendiente desde Reportes.
         [HttpPost("sales/{id}/retry-certification")]
         public async Task<IActionResult> RetryCertification(
             string id,
@@ -113,19 +81,6 @@ namespace QBTicketsApi.Controllers
         {
             try
             {
-                if (!await UserCanAccessDocumentAsync(id))
-                {
-                    return StatusCode(
-                        StatusCodes.Status403Forbidden,
-                        new
-                        {
-                            success = false,
-                            error =
-                                "No tiene permiso para certificar esta venta."
-                        }
-                    );
-                }
-
                 RetryCertificationResponseDto result =
                     await _reportsService
                         .RetryCertificationAsync(
@@ -150,7 +105,8 @@ namespace QBTicketsApi.Controllers
             }
         }
 
-        // GET /api/reports/cashier-cut
+        // El cajero utilizado es exactamente el seleccionado
+        // en el Native. Ya no se reemplaza por el usuario conectado.
         [HttpGet("cashier-cut")]
         public async Task<IActionResult> GetCashierCut(
             [FromQuery] string? cashierName,
@@ -159,43 +115,19 @@ namespace QBTicketsApi.Controllers
         {
             try
             {
-                string finalCashierName;
-
-                if (CanViewAllSales())
+                if (string.IsNullOrWhiteSpace(
+                    cashierName))
                 {
-                    if (string.IsNullOrWhiteSpace(
-                        cashierName))
+                    return BadRequest(new
                     {
-                        return BadRequest(new
-                        {
-                            success = false,
-                            error =
-                                "Debe seleccionar un cajero."
-                        });
-                    }
-
-                    finalCashierName =
-                        cashierName.Trim();
+                        success = false,
+                        error =
+                            "Debe seleccionar un cajero."
+                    });
                 }
-                else
-                {
-                    finalCashierName =
-                        GetCurrentCashierName();
 
-                    if (string.IsNullOrWhiteSpace(
-                        finalCashierName))
-                    {
-                        return StatusCode(
-                            StatusCodes.Status403Forbidden,
-                            new
-                            {
-                                success = false,
-                                error =
-                                    "El usuario no tiene un cajero asignado."
-                            }
-                        );
-                    }
-                }
+                string finalCashierName =
+                    cashierName.Trim();
 
                 CashierCutDto result =
                     await _reportsService
@@ -217,7 +149,8 @@ namespace QBTicketsApi.Controllers
             }
         }
 
-        // GET /api/reports/general-cut
+        // Todos los usuarios autenticados pueden consultar
+        // el corte general.
         [HttpGet("general-cut")]
         public async Task<IActionResult> GetGeneralCut(
             [FromQuery] DateTime desde,
@@ -225,19 +158,6 @@ namespace QBTicketsApi.Controllers
         {
             try
             {
-                if (!CanViewAllSales())
-                {
-                    return StatusCode(
-                        StatusCodes.Status403Forbidden,
-                        new
-                        {
-                            success = false,
-                            error =
-                                "No tiene permiso para consultar el corte general."
-                        }
-                    );
-                }
-
                 GeneralCutDto result =
                     await _reportsService
                         .GetGeneralCutAsync(
@@ -256,7 +176,9 @@ namespace QBTicketsApi.Controllers
                 });
             }
         }
-        // GET /api/reports/products?desde=2026-07-01&hasta=2026-07-20
+
+        // Todos los usuarios autenticados pueden consultar
+        // el reporte completo por producto.
         [HttpGet("products")]
         public async Task<IActionResult> GetProductsReport(
             [FromQuery] DateTime desde,
@@ -264,34 +186,12 @@ namespace QBTicketsApi.Controllers
         {
             try
             {
-                string? cashierName = null;
-
-                if (!CanViewAllSales())
-                {
-                    cashierName =
-                        GetCurrentCashierName();
-
-                    if (string.IsNullOrWhiteSpace(
-                        cashierName))
-                    {
-                        return StatusCode(
-                            StatusCodes.Status403Forbidden,
-                            new
-                            {
-                                success = false,
-                                error =
-                                    "El usuario no tiene un cajero asignado."
-                            }
-                        );
-                    }
-                }
-
                 ProductSalesReportResponseDto result =
                     await _reportsService
                         .GetProductSalesReportAsync(
                             desde,
                             hasta,
-                            cashierName
+                            null
                         );
 
                 return Ok(result);
@@ -304,56 +204,6 @@ namespace QBTicketsApi.Controllers
                     error = ex.Message
                 });
             }
-        }
-
-        private async Task<bool>
-            UserCanAccessDocumentAsync(string id)
-        {
-            if (CanViewAllSales())
-            {
-                return true;
-            }
-
-            string currentCashier =
-                GetCurrentCashierName();
-
-            if (string.IsNullOrWhiteSpace(
-                currentCashier))
-            {
-                return false;
-            }
-
-            string documentCashier =
-                await _quickBooksService
-                    .GetDocumentCashierNameAsync(id);
-
-            return string.Equals(
-                documentCashier?.Trim(),
-                currentCashier,
-                StringComparison.OrdinalIgnoreCase
-            );
-        }
-
-        private string GetCurrentCashierName()
-        {
-            return User.FindFirst(
-                       "cashierName"
-                   )?.Value?.Trim()
-                   ?? "";
-        }
-
-        private bool CanViewAllSales()
-        {
-            string value =
-                User.FindFirst(
-                    "canViewAllSales"
-                )?.Value
-                ?? "false";
-
-            return bool.TryParse(
-                       value,
-                       out bool canViewAll) &&
-                   canViewAll;
         }
     }
 }
