@@ -86,6 +86,10 @@ namespace QBTicketsApi.Services
                     out Invoice? stored
                 );
 
+                bool isCancelled =
+                    stored != null &&
+                    stored.IsCancelled;
+
                 bool isCertified =
                     stored != null &&
                     stored.IsCertified &&
@@ -131,21 +135,29 @@ namespace QBTicketsApi.Services
                             sale.InvoiceNumber,
 
                         AuthorizationNumber =
-                            stored?.FelAuthorizationNumber
-                            ?? "",
+                            isCertified
+                                ? stored!.FelAuthorizationNumber
+                                : "PENDIENTE",
 
                         Serie =
-                            stored?.FelSerie
-                            ?? "",
+                            isCertified
+                                ? stored!.FelSerie
+                                : "PENDIENTE",
 
                         DteNumber =
-                            stored?.FelDteNumber
-                            ?? "",
+                            isCertified &&
+                            !string.IsNullOrWhiteSpace(
+                                stored!.FelDteNumber
+                            )
+                                ? stored.FelDteNumber
+                                : sale.InvoiceNumber,
 
                         Status =
-                            isCertified
-                                ? "Certificada"
-                                : "Sin certificar",
+                            isCancelled
+                                ? "ANULADA"
+                                : isCertified
+                                    ? "CERTIFICADA"
+                                    : "ENVIO",
 
                         Total =
                             stored != null &&
@@ -154,7 +166,8 @@ namespace QBTicketsApi.Services
                                 : sale.Total,
 
                         CancellationReason =
-                            "",
+                            stored?.CancellationReason
+                            ?? "",
 
                         CashierName =
                             sale.CashierName,
@@ -163,7 +176,8 @@ namespace QBTicketsApi.Services
                             isCertified,
 
                         CanRetryCertification =
-                            !isCertified
+                            !isCertified &&
+                            !isCancelled
                     }
                 );
             }
@@ -292,6 +306,10 @@ namespace QBTicketsApi.Services
                         quickBooksId
                     );
 
+            bool isCancelled =
+                stored != null &&
+                stored.IsCancelled;
+
             bool isCertified =
                 stored != null &&
                 stored.IsCertified &&
@@ -351,9 +369,11 @@ namespace QBTicketsApi.Services
                         ?? "",
 
                     Status =
-                        isCertified
-                            ? "Certificada"
-                            : "Sin certificar",
+                        isCancelled
+                            ? "ANULADA"
+                            : isCertified
+                                ? "CERTIFICADA"
+                                : "ENVIO",
 
                     Qr =
                         stored?.FelQr
@@ -381,7 +401,8 @@ namespace QBTicketsApi.Services
                         isCertified,
 
                     CanRetryCertification =
-                        !isCertified
+                        !isCertified &&
+                        !isCancelled
                 };
 
             detail.Items =
@@ -416,7 +437,7 @@ namespace QBTicketsApi.Services
             return detail;
         }
 
-        public async Task<RetryCertificationResponseDto>RetryCertificationAsync(string quickBooksId,RetryCertificationRequestDto request)
+        public async Task<RetryCertificationResponseDto> RetryCertificationAsync(string quickBooksId, RetryCertificationRequestDto request)
         {
             Invoice? existing =
                 await _db.Invoices
@@ -1030,7 +1051,7 @@ namespace QBTicketsApi.Services
             };
         }
 
-        private async Task<string> GetPaymentMethodAsync(string quickBooksId,string saleType)
+        private async Task<string> GetPaymentMethodAsync(string quickBooksId, string saleType)
         {
             string json =
                 saleType == "credito"
