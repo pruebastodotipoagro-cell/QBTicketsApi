@@ -4,6 +4,7 @@ using QBTicketsApi.DTOs;
 using QBTicketsApi.DTOs.QBTicketsApi.DTOs;
 using QBTicketsApi.Models;
 using System.Net.Http.Headers;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -1320,18 +1321,97 @@ namespace QBTicketsApi.Services
         }
 
         private static string GetCashierNameFromOptionId(
-    string optionId)
+            string optionId)
         {
-            return optionId switch
+            string clean =
+                NormalizeCashierKey(
+                    optionId
+                );
+
+            /*
+             * QuickBooks puede devolver el ID de la opción
+             * o el texto visible del campo personalizado.
+             */
+            if (clean == "1" ||
+                clean == "ROCIO" ||
+                clean == "ROCIO RAMOS")
             {
-                "1" => "ROCIO RAMOS",
-                "2" => "ADAN HERNANDEZ",
-                "3" => "FERNANDO GOMEZ",
-                "4" => "CARLOS LORENZANA",
-                "5" => "PAOLA VALLADARES",
-                _ => optionId
-            };
+                return "ROCIO RAMOS";
+            }
+
+            if (clean == "2" ||
+                clean == "ADAN" ||
+                clean == "ADAN HERNANDEZ")
+            {
+                return "ADAN HERNANDEZ";
+            }
+
+            if (clean == "3" ||
+                clean == "FERNANDO" ||
+                clean == "FERNANDO GOMEZ")
+            {
+                return "FERNANDO GOMEZ";
+            }
+
+            if (clean == "4" ||
+                clean == "CARLOS" ||
+                clean == "CARLOS LORENZANA")
+            {
+                return "CARLOS LORENZANA";
+            }
+
+            if (clean == "5" ||
+                clean == "PAOLA" ||
+                clean == "PAOLA VALLADARES")
+            {
+                return "PAOLA VALLADARES";
+            }
+
+            return clean;
         }
+
+        private static string NormalizeCashierKey(
+            string value)
+        {
+            string normalized =
+                (value ?? "")
+                    .Trim()
+                    .ToUpperInvariant()
+                    .Normalize(
+                        NormalizationForm.FormD
+                    );
+
+            var builder =
+                new StringBuilder();
+
+            foreach (char character in normalized)
+            {
+                UnicodeCategory category =
+                    CharUnicodeInfo.GetUnicodeCategory(
+                        character
+                    );
+
+                if (category !=
+                    UnicodeCategory.NonSpacingMark)
+                {
+                    builder.Append(
+                        character
+                    );
+                }
+            }
+
+            return builder
+                .ToString()
+                .Normalize(
+                    NormalizationForm.FormC
+                )
+                .Replace(".", " ")
+                .Replace(",", " ")
+                .Replace("-", " ")
+                .Replace("  ", " ")
+                .Trim();
+        }
+
         public async Task<string> GetDocumentCashierNameAsync(
     string id)
         {
@@ -1403,6 +1483,127 @@ namespace QBTicketsApi.Services
                 documents[0]
             );
         }
+        private static string GetCashierFromPayment(
+            JsonElement payment)
+        {
+            string referenceNumber =
+                payment.TryGetProperty(
+                    "PaymentRefNum",
+                    out JsonElement referenceElement)
+                    ? referenceElement.GetString() ?? ""
+                    : "";
+
+            string cashierFromReference =
+                GetCashierFromPaymentReference(
+                    referenceNumber
+                );
+
+            if (!string.IsNullOrWhiteSpace(
+                cashierFromReference))
+            {
+                return cashierFromReference;
+            }
+
+            /*
+             * Como respaldo intentamos leer un campo
+             * personalizado llamado CAJERO si QuickBooks
+             * llegara a devolverlo en el pago.
+             */
+            return GetCashierFromTransactionJson(
+                payment
+            );
+        }
+
+        private static string GetCashierFromPaymentReference(
+            string referenceNumber)
+        {
+            if (string.IsNullOrWhiteSpace(
+                referenceNumber))
+            {
+                return "";
+            }
+
+            string clean =
+                referenceNumber.Trim();
+
+            const string prefix =
+                "CAJERO:";
+
+            int prefixPosition =
+                clean.IndexOf(
+                    prefix,
+                    StringComparison.OrdinalIgnoreCase
+                );
+
+            if (prefixPosition < 0)
+            {
+                return "";
+            }
+
+            string cashierName =
+                clean.Substring(
+                    prefixPosition +
+                    prefix.Length
+                )
+                .Trim();
+
+            if (string.IsNullOrWhiteSpace(
+                cashierName))
+            {
+                return "";
+            }
+
+            return NormalizeCashierName(
+                cashierName
+            );
+        }
+
+        private static string NormalizeCashierName(
+            string cashierName)
+        {
+            string clean =
+                (cashierName ?? "")
+                    .Trim()
+                    .ToUpperInvariant();
+
+            if (clean == "ROCIO" ||
+                clean == "ROCÍO" ||
+                clean == "ROCIO RAMOS" ||
+                clean == "ROCÍO RAMOS")
+            {
+                return "ROCIO RAMOS";
+            }
+
+            if (clean == "ADAN" ||
+                clean == "ADÁN" ||
+                clean == "ADAN HERNANDEZ" ||
+                clean == "ADÁN HERNÁNDEZ")
+            {
+                return "ADAN HERNANDEZ";
+            }
+
+            if (clean == "FERNANDO" ||
+                clean == "FERNANDO GOMEZ" ||
+                clean == "FERNANDO GÓMEZ")
+            {
+                return "FERNANDO GOMEZ";
+            }
+
+            if (clean == "CARLOS" ||
+                clean == "CARLOS LORENZANA")
+            {
+                return "CARLOS LORENZANA";
+            }
+
+            if (clean == "PAOLA" ||
+                clean == "PAOLA VALLADARES")
+            {
+                return "PAOLA VALLADARES";
+            }
+
+            return clean;
+        }
+
         public async Task<string> GetPayments(
     string? fechaDesde = null,
     string? fechaHasta = null)
@@ -1467,7 +1668,8 @@ namespace QBTicketsApi.Services
             string url =
                 $"https://quickbooks.api.intuit.com/v3/company/" +
                 $"{connection.RealmId}/query" +
-                $"?query={query}";
+                $"?query={query}" +
+                $"&include=enhancedAllCustomFields";
 
             HttpResponseMessage response =
                 await client.GetAsync(url);
@@ -1563,6 +1765,11 @@ namespace QBTicketsApi.Services
                                 out JsonElement referenceElement)
                                 ? referenceElement.GetString() ?? ""
                                 : "",
+
+                        CashierName =
+                            GetCashierFromPayment(
+                                payment
+                            ),
 
                         TotalAmount =
                             payment.TryGetProperty(

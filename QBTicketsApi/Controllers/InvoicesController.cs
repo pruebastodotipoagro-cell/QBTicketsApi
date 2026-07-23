@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Mvc;
 using QBTicketsApi.DTOs;
 using QBTicketsApi.Services;
 using System.Security.Claims;
+using System.Globalization;
+using System.Text;
 
 namespace QBTicketsApi.Controllers
 {
@@ -13,18 +15,10 @@ namespace QBTicketsApi.Controllers
     {
         private readonly QuickBooksService _quickBooksService;
 
-        private readonly FelCancellationService
-    _felCancellationService;
-
         public InvoicesController(
-    QuickBooksService quickBooksService,
-    FelCancellationService felCancellationService)
+            QuickBooksService quickBooksService)
         {
-            _quickBooksService =
-                quickBooksService;
-
-            _felCancellationService =
-                felCancellationService;
+            _quickBooksService = quickBooksService;
         }
 
         [HttpGet("quickbooks-test")]
@@ -261,86 +255,6 @@ namespace QBTicketsApi.Controllers
             }
         }
 
-        [HttpPost("{quickBooksId}/cancel")]
-        public async Task<IActionResult> CancelInvoice(
-    string quickBooksId,
-    [FromBody] CancelInvoiceRequest request)
-        {
-            try
-            {
-                if (request == null)
-                {
-                    return BadRequest(
-                        new
-                        {
-                            success = false,
-                            message =
-                                "No se recibió la solicitud de anulación."
-                        }
-                    );
-                }
-
-                string reason =
-                    (request.Reason ?? "")
-                        .Trim();
-
-                if (string.IsNullOrWhiteSpace(reason))
-                {
-                    return BadRequest(
-                        new
-                        {
-                            success = false,
-                            message =
-                                "Debe indicar el motivo de la anulación."
-                        }
-                    );
-                }
-
-                FelCancellationResult result =
-                    await _felCancellationService
-                        .CancelAsync(
-                            quickBooksId,
-                            reason
-                        );
-
-                return Ok(
-                    new
-                    {
-                        success =
-                            result.Success,
-
-                        message =
-                            result.Message,
-
-                        quickBooksId =
-                            result.QuickBooksId,
-
-                        originalAuthorizationNumber =
-                            result.OriginalAuthorizationNumber,
-
-                        cancellationAuthorizationNumber =
-                            result.CancellationAuthorizationNumber,
-
-                        cancellationReason =
-                            result.CancellationReason,
-
-                        cancellationDate =
-                            result.CancellationDate
-                    }
-                );
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(
-                    new
-                    {
-                        success = false,
-                        message = ex.Message
-                    }
-                );
-            }
-        }
-
         private List<InvoiceResponseDto>
             FilterInvoicesForCurrentUser(
                 List<InvoiceResponseDto> invoices)
@@ -359,11 +273,18 @@ namespace QBTicketsApi.Controllers
                 return new List<InvoiceResponseDto>();
             }
 
+            string cashierKey =
+                NormalizeCashierName(
+                    cashierName
+                );
+
             return invoices
                 .Where(x =>
                     string.Equals(
-                        x.CashierName?.Trim(),
-                        cashierName,
+                        NormalizeCashierName(
+                            x.CashierName
+                        ),
+                        cashierKey,
                         StringComparison.OrdinalIgnoreCase
                     )
                 )
@@ -393,10 +314,89 @@ namespace QBTicketsApi.Controllers
                     .GetDocumentCashierNameAsync(id);
 
             return string.Equals(
-                documentCashier?.Trim(),
-                currentCashier,
+                NormalizeCashierName(
+                    documentCashier
+                ),
+                NormalizeCashierName(
+                    currentCashier
+                ),
                 StringComparison.OrdinalIgnoreCase
             );
+        }
+
+        private static string NormalizeCashierName(
+            string value)
+        {
+            string normalized =
+                (value ?? "")
+                    .Trim()
+                    .ToUpperInvariant()
+                    .Normalize(
+                        NormalizationForm.FormD
+                    );
+
+            var builder =
+                new StringBuilder();
+
+            foreach (char character in normalized)
+            {
+                UnicodeCategory category =
+                    CharUnicodeInfo.GetUnicodeCategory(
+                        character
+                    );
+
+                if (category !=
+                    UnicodeCategory.NonSpacingMark)
+                {
+                    builder.Append(
+                        character
+                    );
+                }
+            }
+
+            string clean =
+                builder
+                    .ToString()
+                    .Normalize(
+                        NormalizationForm.FormC
+                    )
+                    .Replace(".", " ")
+                    .Replace(",", " ")
+                    .Replace("-", " ")
+                    .Replace("  ", " ")
+                    .Trim();
+
+            if (clean == "ROCIO" ||
+                clean == "ROCIO RAMOS")
+            {
+                return "ROCIO RAMOS";
+            }
+
+            if (clean == "ADAN" ||
+                clean == "ADAN HERNANDEZ")
+            {
+                return "ADAN HERNANDEZ";
+            }
+
+            if (clean == "FERNANDO" ||
+                clean == "FERNANDO GOMEZ")
+            {
+                return "FERNANDO GOMEZ";
+            }
+
+            if (clean == "CARLOS" ||
+                clean == "CARLOS LORENZANA")
+            {
+                return "CARLOS LORENZANA";
+            }
+
+            if (clean == "PAOLA" ||
+                clean == "PAOLA VALLADARES")
+            {
+                return "PAOLA VALLADARES";
+            }
+
+            return clean;
         }
 
         private string GetCurrentCashierName()
@@ -421,6 +421,5 @@ namespace QBTicketsApi.Controllers
                    ) &&
                    canViewAll;
         }
-
     }
 }
