@@ -14,7 +14,17 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(
         builder.Configuration.GetConnectionString(
             "DefaultConnection"
-        )
+        ),
+        npgsqlOptions =>
+        {
+            npgsqlOptions.EnableRetryOnFailure(
+                maxRetryCount: 5,
+                maxRetryDelay: TimeSpan.FromSeconds(5),
+                errorCodesToAdd: null
+            );
+
+            npgsqlOptions.CommandTimeout(30);
+        }
     )
 );
 
@@ -96,10 +106,6 @@ app.UseSwaggerUI();
 
 app.UseHttpsRedirection();
 
-/*
- * El orden es importante:
- * primero Authentication y después Authorization.
- */
 app.UseAuthentication();
 app.UseAuthorization();
 

@@ -56,28 +56,25 @@ namespace QBTicketsApi.Services
                 return cached;
             }
 
-            Task<List<InvoiceResponseDto>> cashTask =
-                _quickBooksService.GetSalesReceiptsList(
-                    desde,
-                    hasta
-                );
-
-            Task<List<InvoiceResponseDto>> creditTask =
-                _quickBooksService.GetCreditInvoicesList(
-                    desde,
-                    hasta
-                );
-
-            await Task.WhenAll(
-                cashTask,
-                creditTask
-            );
-
+            /*
+             * No ejecutar estas consultas en paralelo.
+             * QuickBooksService comparte el mismo AppDbContext dentro
+             * de esta solicitud y EF Core no permite dos operaciones
+             * simultáneas sobre la misma instancia.
+             */
             List<InvoiceResponseDto> cashSales =
-                await cashTask;
+                await _quickBooksService
+                    .GetSalesReceiptsList(
+                        desde,
+                        hasta
+                    );
 
             List<InvoiceResponseDto> creditSales =
-                await creditTask;
+                await _quickBooksService
+                    .GetCreditInvoicesList(
+                        desde,
+                        hasta
+                    );
 
             List<InvoiceResponseDto> allSales =
                 cashSales
@@ -969,28 +966,23 @@ namespace QBTicketsApi.Services
             string endText =
                 finalEndDate.ToString("yyyy-MM-dd");
 
-            Task<List<InvoiceResponseDto>> cashTask =
-                _quickBooksService.GetSalesReceiptsList(
-                    startText,
-                    endText
-                );
-
-            Task<List<InvoiceResponseDto>> creditTask =
-                _quickBooksService.GetCreditInvoicesList(
-                    startText,
-                    endText
-                );
-
-            await Task.WhenAll(
-                cashTask,
-                creditTask
-            );
-
+            /*
+             * Consultas consecutivas para evitar el error:
+             * "A second operation was started on this context instance".
+             */
             List<InvoiceResponseDto> cashSales =
-                await cashTask;
+                await _quickBooksService
+                    .GetSalesReceiptsList(
+                        startText,
+                        endText
+                    );
 
             List<InvoiceResponseDto> creditSales =
-                await creditTask;
+                await _quickBooksService
+                    .GetCreditInvoicesList(
+                        startText,
+                        endText
+                    );
 
             List<InvoiceResponseDto> sales =
                 cashSales

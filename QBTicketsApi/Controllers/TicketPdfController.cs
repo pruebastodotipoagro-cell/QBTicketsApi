@@ -43,22 +43,6 @@ namespace QBTicketsApi.Controllers
                     });
                 }
 
-                bool hasAccess =
-                    await UserCanAccessDocumentAsync(id);
-
-                if (!hasAccess)
-                {
-                    return StatusCode(
-                        StatusCodes.Status403Forbidden,
-                        new
-                        {
-                            success = false,
-                            error =
-                                "No tiene permiso para imprimir esta venta."
-                        }
-                    );
-                }
-
                 string json =
                     await ObtenerDocumentoQuickBooksAsync(id);
 
@@ -189,22 +173,6 @@ namespace QBTicketsApi.Controllers
                         success = false,
                         error = "El ID del documento es obligatorio."
                     });
-                }
-
-                bool hasAccess =
-                    await UserCanAccessDocumentAsync(id);
-
-                if (!hasAccess)
-                {
-                    return StatusCode(
-                        StatusCodes.Status403Forbidden,
-                        new
-                        {
-                            success = false,
-                            error =
-                                "No tiene permiso para imprimir esta venta."
-                        }
-                    );
                 }
 
                 if (request is null)
@@ -463,54 +431,6 @@ namespace QBTicketsApi.Controllers
             return null;
         }
 
-        private async Task<bool> UserCanAccessDocumentAsync(
-            string id)
-        {
-            if (CanViewAllSales())
-            {
-                return true;
-            }
 
-            string currentCashier =
-                GetCurrentCashierName();
-
-            if (string.IsNullOrWhiteSpace(currentCashier))
-            {
-                return false;
-            }
-
-            string documentCashier =
-                await _quickBooksService
-                    .GetDocumentCashierNameAsync(id);
-
-            return string.Equals(
-                documentCashier?.Trim(),
-                currentCashier,
-                StringComparison.OrdinalIgnoreCase
-            );
-        }
-
-        private string GetCurrentCashierName()
-        {
-            return User.FindFirst(
-                       "cashierName"
-                   )?.Value?.Trim()
-                   ?? "";
-        }
-
-        private bool CanViewAllSales()
-        {
-            string value =
-                User.FindFirst(
-                    "canViewAllSales"
-                )?.Value
-                ?? "false";
-
-            return bool.TryParse(
-                       value,
-                       out bool canViewAll
-                   ) &&
-                   canViewAll;
-        }
     }
 }
