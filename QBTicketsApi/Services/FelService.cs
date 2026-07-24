@@ -186,8 +186,16 @@ namespace QBTicketsApi.Services
                 "CF",
                 StringComparison.OrdinalIgnoreCase))
             {
-                nombreFiscalNormalizado =
-                    "Consumidor Final";
+                /*
+                 * CF puede llevar un nombre personalizado.
+                 * Solo usamos Consumidor Final cuando no se recibió nombre.
+                 */
+                if (string.IsNullOrWhiteSpace(
+                    nombreFiscalNormalizado))
+                {
+                    nombreFiscalNormalizado =
+                        "Consumidor Final";
+                }
             }
             else
             {
@@ -292,9 +300,11 @@ namespace QBTicketsApi.Services
                     ? "Consumidor Final"
                     : resumen.customerName.Trim();
 
-            if (customerNit.Equals(
-                "CF",
-                StringComparison.OrdinalIgnoreCase))
+            /*
+             * No sustituimos el nombre solo porque el NIT sea CF.
+             * Se conserva el nombre usado para emitir la factura.
+             */
+            if (string.IsNullOrWhiteSpace(customerName))
             {
                 customerName =
                     "Consumidor Final";

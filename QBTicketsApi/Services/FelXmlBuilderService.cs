@@ -110,9 +110,11 @@ namespace QBTicketsApi.Services
                 customerNit = "CF";
             }
 
-            if (customerNit.Equals(
-                "CF",
-                StringComparison.OrdinalIgnoreCase))
+            /*
+             * La identificación CF puede imprimirse y certificarse
+             * con el nombre proporcionado por el cliente.
+             */
+            if (string.IsNullOrWhiteSpace(customerName))
             {
                 customerName =
                     "Consumidor Final";

@@ -96,9 +96,12 @@ namespace QBTicketsApi.Services
                 customer = customerNameOverride.Trim();
             }
 
-            if (customerNit.Equals(
-                "CF",
-                StringComparison.OrdinalIgnoreCase))
+            /*
+             * Un NIT CF no obliga a reemplazar el nombre.
+             * Si el cajero escribió o seleccionó un nombre,
+             * ese nombre debe aparecer en el ticket.
+             */
+            if (string.IsNullOrWhiteSpace(customer))
             {
                 customer = "Consumidor Final";
             }
@@ -627,9 +630,11 @@ namespace QBTicketsApi.Services
                     ? "CF"
                     : nit.Trim();
 
-            if (customerNit.Equals(
-                "CF",
-                StringComparison.OrdinalIgnoreCase))
+            /*
+             * También en recibos no certificados conservamos
+             * el nombre escrito aunque el NIT sea CF.
+             */
+            if (string.IsNullOrWhiteSpace(customerName))
             {
                 customerName = "Consumidor Final";
             }
