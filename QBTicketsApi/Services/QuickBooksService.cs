@@ -81,20 +81,11 @@ namespace QBTicketsApi.Services
         // fechaDesde / fechaHasta en formato "yyyy-MM-dd". Si vienen null/vacíos, no se filtra por fecha.
         public async Task<string> GetSalesReceipts(string? fechaDesde = null, string? fechaHasta = null)
         {
-            string cacheKey =
-                BuildCacheKey(
-                    "qb-sales-receipts",
-                    fechaDesde,
-                    fechaHasta
-                );
-
-            if (_memoryCache.TryGetValue(
-                    cacheKey,
-                    out string? cachedJson) &&
-                !string.IsNullOrWhiteSpace(cachedJson))
-            {
-                return cachedJson;
-            }
+            /*
+             * No usar caché aquí.
+             * Los dashboards dependen de esta consulta para detectar
+             * ventas nuevas inmediatamente al presionar Actualizar.
+             */
 
             var connection = _db.QuickBooksConnections.FirstOrDefault();
 
@@ -178,12 +169,6 @@ namespace QBTicketsApi.Services
                     responseText
                 );
             }
-
-            _memoryCache.Set(
-                cacheKey,
-                responseText,
-                ShortCache()
-            );
 
             return responseText;
         }
@@ -796,20 +781,11 @@ namespace QBTicketsApi.Services
         // fechaDesde / fechaHasta en formato "yyyy-MM-dd". Si vienen null/vacíos, no se filtra por fecha.
         public async Task<string> GetCreditInvoices(string? fechaDesde = null, string? fechaHasta = null)
         {
-            string cacheKey =
-                BuildCacheKey(
-                    "qb-credit-invoices",
-                    fechaDesde,
-                    fechaHasta
-                );
-
-            if (_memoryCache.TryGetValue(
-                    cacheKey,
-                    out string? cachedJson) &&
-                !string.IsNullOrWhiteSpace(cachedJson))
-            {
-                return cachedJson;
-            }
+            /*
+             * No usar caché aquí.
+             * El dashboard de crédito debe detectar facturas nuevas
+             * inmediatamente al presionar Actualizar.
+             */
 
             var connection = _db.QuickBooksConnections.FirstOrDefault();
             if (connection == null) return "No hay conexión QuickBooks.";
