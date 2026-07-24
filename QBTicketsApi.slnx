@@ -1,4 +1,6 @@
 <Solution>
   <Project Path="QBTicketsApi/QBTicketsApi.csproj" />
-  <Project Path="QBTicketsSetup/QBTicketsSetup.vdproj" Type="Installer" />
+  <Project Path="QBTicketsSetup/QBTicketsSetup.vdproj" Type="Installer">
+    <Build />
+  </Project>
 </Solution>

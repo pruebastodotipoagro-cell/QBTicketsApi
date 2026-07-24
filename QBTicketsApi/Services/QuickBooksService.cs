@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using QBTicketsApi.Database;
 using QBTicketsApi.DTOs;
 using QBTicketsApi.DTOs.QBTicketsApi.DTOs;
@@ -17,18 +18,84 @@ namespace QBTicketsApi.Services
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IConfiguration _config;
         private readonly CustomerLookupService _customerLookupService;
+        private readonly IMemoryCache _memoryCache;
 
-        public QuickBooksService(AppDbContext db, IHttpClientFactory httpClientFactory, IConfiguration config, CustomerLookupService customerLookupService)
+        /*
+         * Caché por solicitud HTTP. ReportsService y QuickBooksService
+         * son servicios con el mismo alcance, por lo que las listas ya
+         * descargadas de QuickBooks pueden reutilizar sus métodos de pago
+         * y líneas sin volver a consultar documento por documento.
+         */
+        private readonly Dictionary<string, string>
+            _reportPaymentMethodCache =
+                new Dictionary<string, string>(
+                    StringComparer.OrdinalIgnoreCase
+                );
+
+        private readonly Dictionary<string, InvoiceItemsResponseDto>
+            _reportDocumentItemsCache =
+                new Dictionary<string, InvoiceItemsResponseDto>(
+                    StringComparer.OrdinalIgnoreCase
+                );
+
+        public QuickBooksService(
+            AppDbContext db,
+            IHttpClientFactory httpClientFactory,
+            IConfiguration config,
+            CustomerLookupService customerLookupService,
+            IMemoryCache memoryCache)
         {
             _db = db;
             _httpClientFactory = httpClientFactory;
             _config = config;
             _customerLookupService = customerLookupService;
+            _memoryCache = memoryCache;
+        }
+
+        private static string BuildCacheKey(
+            string prefix,
+            string? from = null,
+            string? to = null)
+        {
+            return prefix + "|" +
+                (from ?? "") + "|" +
+                (to ?? "");
+        }
+
+        private static MemoryCacheEntryOptions ShortCache()
+        {
+            return new MemoryCacheEntryOptions()
+                .SetAbsoluteExpiration(
+                    TimeSpan.FromSeconds(20)
+                );
+        }
+
+        private static MemoryCacheEntryOptions MediumCache()
+        {
+            return new MemoryCacheEntryOptions()
+                .SetAbsoluteExpiration(
+                    TimeSpan.FromMinutes(10)
+                );
         }
 
         // fechaDesde / fechaHasta en formato "yyyy-MM-dd". Si vienen null/vacíos, no se filtra por fecha.
         public async Task<string> GetSalesReceipts(string? fechaDesde = null, string? fechaHasta = null)
         {
+            string cacheKey =
+                BuildCacheKey(
+                    "qb-sales-receipts",
+                    fechaDesde,
+                    fechaHasta
+                );
+
+            if (_memoryCache.TryGetValue(
+                    cacheKey,
+                    out string? cachedJson) &&
+                !string.IsNullOrWhiteSpace(cachedJson))
+            {
+                return cachedJson;
+            }
+
             var connection = _db.QuickBooksConnections.FirstOrDefault();
 
             if (connection == null)
@@ -111,6 +178,12 @@ namespace QBTicketsApi.Services
                     responseText
                 );
             }
+
+            _memoryCache.Set(
+                cacheKey,
+                responseText,
+                ShortCache()
+            );
 
             return responseText;
         }
@@ -209,6 +282,14 @@ namespace QBTicketsApi.Services
                     );
                 }
 
+                CacheReportDocumentData(
+                    receipt,
+                    id,
+                    docNumber,
+                    customerNameQuickBooks,
+                    "contado"
+                );
+
                 var certificada =
                     await _db.Invoices
                         .AsNoTracking()
@@ -261,14 +342,6 @@ namespace QBTicketsApi.Services
                         totalQuickBooks;
                 }
 
-                if (customerNitFinal.Equals(
-                    "CF",
-                    StringComparison.OrdinalIgnoreCase))
-                {
-                    customerNameFinal =
-                        "Consumidor Final";
-                }
-
                 result.Add(
                     new InvoiceResponseDto
                     {
@@ -292,6 +365,343 @@ namespace QBTicketsApi.Services
                 .ToList();
         }
 
+
+        public string GetCachedPaymentMethod(
+            string quickBooksId,
+            string saleType)
+        {
+            if (string.Equals(
+                    saleType,
+                    "credito",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return "Crédito";
+            }
+
+            if (!string.IsNullOrWhiteSpace(quickBooksId) &&
+                _reportPaymentMethodCache.TryGetValue(
+                    quickBooksId,
+                    out string? paymentMethod) &&
+                !string.IsNullOrWhiteSpace(paymentMethod))
+            {
+                return paymentMethod;
+            }
+
+            return "No indicado";
+        }
+
+        private void CacheReportDocumentData(
+            JsonElement document,
+            string quickBooksId,
+            string invoiceNumber,
+            string customerName,
+            string saleType)
+        {
+            if (string.IsNullOrWhiteSpace(quickBooksId))
+            {
+                return;
+            }
+
+            string paymentMethod =
+                string.Equals(
+                    saleType,
+                    "credito",
+                    StringComparison.OrdinalIgnoreCase)
+                    ? "Crédito"
+                    : GetPaymentMethodFromTransaction(
+                        document
+                    );
+
+            _reportPaymentMethodCache[
+                quickBooksId
+            ] =
+                paymentMethod;
+
+            var result =
+                new InvoiceItemsResponseDto
+                {
+                    QuickBooksId =
+                        quickBooksId,
+
+                    InvoiceNumber =
+                        invoiceNumber,
+
+                    CustomerName =
+                        string.IsNullOrWhiteSpace(
+                            customerName)
+                            ? "Consumidor Final"
+                            : customerName,
+
+                    SaleType =
+                        saleType
+                };
+
+            if (document.TryGetProperty(
+                    "Line",
+                    out JsonElement lines) &&
+                lines.ValueKind ==
+                    JsonValueKind.Array)
+            {
+                foreach (
+                    JsonElement line
+                    in lines.EnumerateArray())
+                {
+                    if (!line.TryGetProperty(
+                            "DetailType",
+                            out JsonElement detailTypeElement) ||
+                        !string.Equals(
+                            detailTypeElement.GetString(),
+                            "SalesItemLineDetail",
+                            StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    if (!line.TryGetProperty(
+                            "SalesItemLineDetail",
+                            out JsonElement detail))
+                    {
+                        continue;
+                    }
+
+                    string lineId =
+                        line.TryGetProperty(
+                            "Id",
+                            out JsonElement lineIdElement)
+                            ? lineIdElement.GetString() ?? ""
+                            : "";
+
+                    string itemId = "";
+                    string itemName = "";
+
+                    if (detail.TryGetProperty(
+                            "ItemRef",
+                            out JsonElement itemRef))
+                    {
+                        itemId =
+                            itemRef.TryGetProperty(
+                                "value",
+                                out JsonElement itemValue)
+                                ? itemValue.GetString() ?? ""
+                                : "";
+
+                        itemName =
+                            itemRef.TryGetProperty(
+                                "name",
+                                out JsonElement itemNameElement)
+                                ? itemNameElement.GetString() ?? ""
+                                : "";
+                    }
+
+                    string description =
+                        !string.IsNullOrWhiteSpace(itemName)
+                            ? itemName
+                            : line.TryGetProperty(
+                                "Description",
+                                out JsonElement descriptionElement)
+                                ? descriptionElement.GetString() ?? ""
+                                : "";
+
+                    if (string.IsNullOrWhiteSpace(description))
+                    {
+                        description = "Producto";
+                    }
+
+                    decimal quantity = 1m;
+
+                    if (detail.TryGetProperty(
+                            "Qty",
+                            out JsonElement quantityElement))
+                    {
+                        quantityElement.TryGetDecimal(
+                            out quantity
+                        );
+                    }
+
+                    decimal unitPrice = 0m;
+
+                    if (detail.TryGetProperty(
+                            "UnitPrice",
+                            out JsonElement unitPriceElement))
+                    {
+                        unitPriceElement.TryGetDecimal(
+                            out unitPrice
+                        );
+                    }
+
+                    decimal amount = 0m;
+
+                    if (line.TryGetProperty(
+                            "Amount",
+                            out JsonElement amountElement))
+                    {
+                        amountElement.TryGetDecimal(
+                            out amount
+                        );
+                    }
+
+                    decimal currentDiscount = 0m;
+
+                    if (detail.TryGetProperty(
+                            "DiscountAmt",
+                            out JsonElement discountElement))
+                    {
+                        discountElement.TryGetDecimal(
+                            out currentDiscount
+                        );
+                    }
+
+                    decimal subtotal =
+                        quantity * unitPrice;
+
+                    if (subtotal <= 0m)
+                    {
+                        subtotal =
+                            amount +
+                            currentDiscount;
+                    }
+
+                    result.Items.Add(
+                        new InvoiceItemDto
+                        {
+                            LineId =
+                                lineId,
+
+                            ItemId =
+                                itemId,
+
+                            Description =
+                                description,
+
+                            Quantity =
+                                quantity,
+
+                            UnitPrice =
+                                unitPrice,
+
+                            Subtotal =
+                                subtotal,
+
+                            CurrentDiscount =
+                                currentDiscount,
+
+                            Total =
+                                amount
+                        }
+                    );
+                }
+            }
+
+            result.Subtotal =
+                result.Items.Sum(
+                    x => x.Subtotal
+                );
+
+            result.DiscountTotal =
+                result.Items.Sum(
+                    x => x.CurrentDiscount
+                );
+
+            result.Total =
+                document.TryGetProperty(
+                    "TotalAmt",
+                    out JsonElement totalElement) &&
+                totalElement.TryGetDecimal(
+                    out decimal total)
+                    ? total
+                    : result.Items.Sum(
+                        x => x.Total
+                    );
+
+            _reportDocumentItemsCache[
+                quickBooksId
+            ] =
+                result;
+        }
+
+        private static string GetPaymentMethodFromTransaction(
+            JsonElement document)
+        {
+            if (document.TryGetProperty(
+                    "PaymentMethodRef",
+                    out JsonElement paymentMethodRef) &&
+                paymentMethodRef.TryGetProperty(
+                    "name",
+                    out JsonElement paymentMethodName))
+            {
+                string name =
+                    paymentMethodName.GetString() ?? "";
+
+                if (!string.IsNullOrWhiteSpace(name))
+                {
+                    return NormalizePaymentMethodForReport(
+                        name
+                    );
+                }
+            }
+
+            if (document.TryGetProperty(
+                    "DepositToAccountRef",
+                    out JsonElement depositRef) &&
+                depositRef.TryGetProperty(
+                    "name",
+                    out JsonElement depositName))
+            {
+                string account =
+                    depositName.GetString() ?? "";
+
+                return NormalizePaymentMethodForReport(
+                    account
+                );
+            }
+
+            return "No indicado";
+        }
+
+        private static string NormalizePaymentMethodForReport(
+            string value)
+        {
+            value =
+                value ?? "";
+
+            if (value.Contains(
+                "efect",
+                StringComparison.OrdinalIgnoreCase) ||
+                value.Contains(
+                "caja",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                return "Efectivo";
+            }
+
+            if (value.Contains(
+                "cheque",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                return "Cheque";
+            }
+
+            if (value.Contains(
+                    "tarjeta",
+                    StringComparison.OrdinalIgnoreCase) ||
+                value.Contains(
+                    "credit",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return "Tarjeta de crédito";
+            }
+
+            if (value.Contains(
+                "transfer",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                return "Transferencia";
+            }
+
+            return string.IsNullOrWhiteSpace(value)
+                ? "No indicado"
+                : value;
+        }
 
         private async Task RefreshToken()
         {
@@ -336,6 +746,17 @@ namespace QBTicketsApi.Services
 
         public async Task<string> GetSalesReceiptById(string id)
         {
+            string cacheKey =
+                "qb-sales-receipt|" + id;
+
+            if (_memoryCache.TryGetValue(
+                    cacheKey,
+                    out string? cachedJson) &&
+                !string.IsNullOrWhiteSpace(cachedJson))
+            {
+                return cachedJson;
+            }
+
             var connection = _db.QuickBooksConnections.FirstOrDefault();
             if (connection == null) return "";
 
@@ -360,12 +781,36 @@ namespace QBTicketsApi.Services
                 $"&include=enhancedAllCustomFields";
 
             var response = await client.GetAsync(url);
-            return await response.Content.ReadAsStringAsync();
+            string responseText =
+                await response.Content.ReadAsStringAsync();
+
+            _memoryCache.Set(
+                cacheKey,
+                responseText,
+                ShortCache()
+            );
+
+            return responseText;
         }
 
         // fechaDesde / fechaHasta en formato "yyyy-MM-dd". Si vienen null/vacíos, no se filtra por fecha.
         public async Task<string> GetCreditInvoices(string? fechaDesde = null, string? fechaHasta = null)
         {
+            string cacheKey =
+                BuildCacheKey(
+                    "qb-credit-invoices",
+                    fechaDesde,
+                    fechaHasta
+                );
+
+            if (_memoryCache.TryGetValue(
+                    cacheKey,
+                    out string? cachedJson) &&
+                !string.IsNullOrWhiteSpace(cachedJson))
+            {
+                return cachedJson;
+            }
+
             var connection = _db.QuickBooksConnections.FirstOrDefault();
             if (connection == null) return "No hay conexión QuickBooks.";
 
@@ -464,6 +909,14 @@ namespace QBTicketsApi.Services
                 decimal balance = 0;
                 if (inv.TryGetProperty("Balance", out var balanceValue))
                     balanceValue.TryGetDecimal(out balance);
+
+                CacheReportDocumentData(
+                    inv,
+                    id,
+                    docNumber,
+                    customerName,
+                    "credito"
+                );
 
                 // Si esta factura ya fue certificada, usamos el NIT real con el que se certificó
                 // (el que el cajero corrigió, si aplicó), no el del lookup automático.
@@ -600,6 +1053,17 @@ namespace QBTicketsApi.Services
 
         public async Task<string> GetInvoiceById(string id)
         {
+            string cacheKey =
+                "qb-invoice|" + id;
+
+            if (_memoryCache.TryGetValue(
+                    cacheKey,
+                    out string? cachedJson) &&
+                !string.IsNullOrWhiteSpace(cachedJson))
+            {
+                return cachedJson;
+            }
+
             var connection = _db.QuickBooksConnections.FirstOrDefault();
             if (connection == null) return "";
 
@@ -628,7 +1092,16 @@ namespace QBTicketsApi.Services
                 $"&include=enhancedAllCustomFields";
 
             var response = await client.GetAsync(url);
-            return await response.Content.ReadAsStringAsync();
+            string responseText =
+                await response.Content.ReadAsStringAsync();
+
+            _memoryCache.Set(
+                cacheKey,
+                responseText,
+                ShortCache()
+            );
+
+            return responseText;
         }
 
         // Construye "WHERE TxnDate >= '...' AND TxnDate <= '...'" según lo que venga.
@@ -651,6 +1124,14 @@ namespace QBTicketsApi.Services
 
         public async Task<InvoiceItemsResponseDto> GetDocumentItemsAsync(string id)
         {
+            if (!string.IsNullOrWhiteSpace(id) &&
+                _reportDocumentItemsCache.TryGetValue(
+                    id,
+                    out InvoiceItemsResponseDto? cachedItems))
+            {
+                return cachedItems;
+            }
+
             string json = await GetSalesReceiptById(id);
             string saleType = "contado";
 
@@ -957,6 +1438,17 @@ namespace QBTicketsApi.Services
         public async Task<string> GetCustomerByIdAsync(
     string customerId)
         {
+            string cacheKey =
+                "qb-customer|" + customerId;
+
+            if (_memoryCache.TryGetValue(
+                    cacheKey,
+                    out string? cachedJson) &&
+                !string.IsNullOrWhiteSpace(cachedJson))
+            {
+                return cachedJson;
+            }
+
             if (string.IsNullOrWhiteSpace(customerId))
             {
                 throw new Exception(
@@ -1036,6 +1528,12 @@ namespace QBTicketsApi.Services
                     responseText
                 );
             }
+
+            _memoryCache.Set(
+                cacheKey,
+                responseText,
+                MediumCache()
+            );
 
             return responseText;
         }
@@ -1608,6 +2106,21 @@ namespace QBTicketsApi.Services
     string? fechaDesde = null,
     string? fechaHasta = null)
         {
+            string cacheKey =
+                BuildCacheKey(
+                    "qb-payments",
+                    fechaDesde,
+                    fechaHasta
+                );
+
+            if (_memoryCache.TryGetValue(
+                    cacheKey,
+                    out string? cachedJson) &&
+                !string.IsNullOrWhiteSpace(cachedJson))
+            {
+                return cachedJson;
+            }
+
             var connection =
                 await _db.QuickBooksConnections
                     .FirstOrDefaultAsync();
@@ -1686,6 +2199,12 @@ namespace QBTicketsApi.Services
                     responseText
                 );
             }
+
+            _memoryCache.Set(
+                cacheKey,
+                responseText,
+                ShortCache()
+            );
 
             return responseText;
         }
@@ -1858,6 +2377,17 @@ namespace QBTicketsApi.Services
 
         public async Task<string> GetItemsAsync()
         {
+            const string cacheKey =
+                "qb-items-catalog";
+
+            if (_memoryCache.TryGetValue(
+                    cacheKey,
+                    out string? cachedJson) &&
+                !string.IsNullOrWhiteSpace(cachedJson))
+            {
+                return cachedJson;
+            }
+
             QuickBooksConnection? connection =
                 await _db.QuickBooksConnections
                     .FirstOrDefaultAsync();
@@ -1973,13 +2503,22 @@ namespace QBTicketsApi.Services
                 startPosition += maxResults;
             }
 
-            return JsonSerializer.Serialize(new
-            {
-                QueryResponse = new
+            string resultJson =
+                JsonSerializer.Serialize(new
                 {
-                    Item = allItems
-                }
-            });
+                    QueryResponse = new
+                    {
+                        Item = allItems
+                    }
+                });
+
+            _memoryCache.Set(
+                cacheKey,
+                resultJson,
+                MediumCache()
+            );
+
+            return resultJson;
         }
 
         public async Task<List<QuickBooksItemReportDto>>
