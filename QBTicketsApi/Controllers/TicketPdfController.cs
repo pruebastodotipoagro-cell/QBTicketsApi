@@ -25,13 +25,12 @@ namespace QBTicketsApi.Controllers
             _felService = felService;
         }
 
-        // GET /api/invoices/{id}/pdf?nit=CF&certifyFel=true
         [HttpGet("{id}/pdf")]
         public async Task<IActionResult> GetTicketPdf(
-     string id,
-     [FromQuery] string? nit = null,
-     [FromQuery] string? customerName = null,
-     [FromQuery] bool certifyFel = true)
+            string id,
+            [FromQuery] string? nit = null,
+            [FromQuery] string? customerName = null,
+            [FromQuery] bool certifyFel = true)
         {
             try
             {
@@ -60,9 +59,8 @@ namespace QBTicketsApi.Controllers
                     );
                 }
 
-                string json = await ObtenerDocumentoQuickBooksAsync(id);
-
-
+                string json =
+                    await ObtenerDocumentoQuickBooksAsync(id);
 
                 if (string.IsNullOrWhiteSpace(json))
                 {
@@ -73,34 +71,33 @@ namespace QBTicketsApi.Controllers
                     });
                 }
 
-                string saleType = EsReciboVenta(json)
-                    ? "contado"
-                    : "credito";
+                string saleType =
+                    EsReciboVenta(json)
+                        ? "contado"
+                        : "credito";
 
-                string nitFinal = LimpiarNit(nit);
+                string nitFinal =
+                    LimpiarNit(nit);
 
-                string? nombreFiscal =
+                string nombreSolicitado =
                     string.IsNullOrWhiteSpace(customerName)
-                        ? null
+                        ? "Consumidor Final"
                         : customerName.Trim();
 
-                if (nitFinal.Equals(
-                    "CF",
-                    StringComparison.OrdinalIgnoreCase))
-                {
-                    nombreFiscal = "Consumidor Final";
-                }
-
+                /*
+                 * IMPORTANTE:
+                 * CF no obliga a usar "Consumidor Final".
+                 * Se conserva el nombre escrito o seleccionado.
+                 */
                 if (certifyFel)
                 {
                     string? fiscalError =
                         ValidarDatosFiscalesParaCertificar(
                             nitFinal,
-                            nombreFiscal
+                            nombreSolicitado
                         );
 
-                    if (!string.IsNullOrWhiteSpace(
-                        fiscalError))
+                    if (!string.IsNullOrWhiteSpace(fiscalError))
                     {
                         return BadRequest(new
                         {
@@ -113,13 +110,14 @@ namespace QBTicketsApi.Controllers
                 if (!certifyFel)
                 {
                     byte[] recibo =
-                        _ticketPdfService.GenerateUncertifiedReceiptPdf(
-                            json,
-                            saleType,
-                            nitFinal,
-                            nombreFiscal,
-                            Array.Empty<ItemDiscountRequest>()
-                        );
+                        _ticketPdfService
+                            .GenerateUncertifiedReceiptPdf(
+                                json,
+                                saleType,
+                                nitFinal,
+                                nombreSolicitado,
+                                Array.Empty<ItemDiscountRequest>()
+                            );
 
                     return File(
                         recibo,
@@ -128,19 +126,29 @@ namespace QBTicketsApi.Controllers
                     );
                 }
 
-                FelResult fel = await _felService.CertifyAsync(
-                id,
-                json,
-                saleType,
-                nitFinal,
-                nombreFiscal,
-                Array.Empty<ItemDiscountRequest>()
-            );
+                FelResult fel =
+                    await _felService.CertifyAsync(
+                        id,
+                        json,
+                        saleType,
+                        nitFinal,
+                        nombreSolicitado,
+                        Array.Empty<ItemDiscountRequest>()
+                    );
 
+                /*
+                 * Para la impresión usamos siempre el nombre solicitado
+                 * por el cajero. Esto también corrige reimpresiones de
+                 * documentos ya guardados anteriormente como CF.
+                 */
                 string nombreFinal =
-                    string.IsNullOrWhiteSpace(fel.CustomerName)
-                        ? "Consumidor Final"
-                        : fel.CustomerName.Trim();
+                    string.IsNullOrWhiteSpace(nombreSolicitado)
+                        ? (
+                            string.IsNullOrWhiteSpace(fel.CustomerName)
+                                ? "Consumidor Final"
+                                : fel.CustomerName.Trim()
+                          )
+                        : nombreSolicitado;
 
                 byte[] pdf =
                     _ticketPdfService.GenerateSalesReceiptPdf(
@@ -167,7 +175,6 @@ namespace QBTicketsApi.Controllers
             }
         }
 
-        // POST /api/invoices/{id}/pdf-with-discounts
         [HttpPost("{id}/pdf-with-discounts")]
         public async Task<IActionResult> GetTicketPdfWithDiscounts(
             string id,
@@ -210,7 +217,8 @@ namespace QBTicketsApi.Controllers
                 }
 
                 List<ItemDiscountRequest> discounts =
-                    request.Discounts ?? new List<ItemDiscountRequest>();
+                    request.Discounts ??
+                    new List<ItemDiscountRequest>();
 
                 string? errorDescuento =
                     ValidarDescuentos(discounts);
@@ -236,16 +244,17 @@ namespace QBTicketsApi.Controllers
                     });
                 }
 
-                string saleType = EsReciboVenta(json)
-                    ? "contado"
-                    : "credito";
+                string saleType =
+                    EsReciboVenta(json)
+                        ? "contado"
+                        : "credito";
 
                 string nitFinal =
                     LimpiarNit(request.Nit);
 
-                string? nombreFiscal =
+                string nombreSolicitado =
                     string.IsNullOrWhiteSpace(request.CustomerName)
-                        ? null
+                        ? "Consumidor Final"
                         : request.CustomerName.Trim();
 
                 if (request.CertifyFel)
@@ -253,11 +262,10 @@ namespace QBTicketsApi.Controllers
                     string? fiscalError =
                         ValidarDatosFiscalesParaCertificar(
                             nitFinal,
-                            nombreFiscal
+                            nombreSolicitado
                         );
 
-                    if (!string.IsNullOrWhiteSpace(
-                        fiscalError))
+                    if (!string.IsNullOrWhiteSpace(fiscalError))
                     {
                         return BadRequest(new
                         {
@@ -270,13 +278,14 @@ namespace QBTicketsApi.Controllers
                 if (!request.CertifyFel)
                 {
                     byte[] recibo =
-                        _ticketPdfService.GenerateUncertifiedReceiptPdf(
-                            json,
-                            saleType,
-                            nitFinal,
-                            nombreFiscal,
-                            discounts
-                        );
+                        _ticketPdfService
+                            .GenerateUncertifiedReceiptPdf(
+                                json,
+                                saleType,
+                                nitFinal,
+                                nombreSolicitado,
+                                discounts
+                            );
 
                     return File(
                         recibo,
@@ -284,20 +293,25 @@ namespace QBTicketsApi.Controllers
                         $"recibo-{id}-no-certificado.pdf"
                     );
                 }
+
                 FelResult fel =
                     await _felService.CertifyAsync(
                         id,
                         json,
                         saleType,
                         nitFinal,
-                        nombreFiscal,
+                        nombreSolicitado,
                         discounts
-                       );
+                    );
 
                 string nombreFinal =
-                    string.IsNullOrWhiteSpace(fel.CustomerName)
-                        ? "Consumidor Final"
-                        : fel.CustomerName.Trim();
+                    string.IsNullOrWhiteSpace(nombreSolicitado)
+                        ? (
+                            string.IsNullOrWhiteSpace(fel.CustomerName)
+                                ? "Consumidor Final"
+                                : fel.CustomerName.Trim()
+                          )
+                        : nombreSolicitado;
 
                 byte[] pdf =
                     _ticketPdfService.GenerateSalesReceiptPdf(
@@ -384,6 +398,9 @@ namespace QBTicketsApi.Controllers
                 string nit,
                 string? customerName)
         {
+            /*
+             * CF puede llevar cualquier nombre no vacío.
+             */
             if (nit.Equals(
                 "CF",
                 StringComparison.OrdinalIgnoreCase))
@@ -391,8 +408,7 @@ namespace QBTicketsApi.Controllers
                 return null;
             }
 
-            if (string.IsNullOrWhiteSpace(
-                customerName))
+            if (string.IsNullOrWhiteSpace(customerName))
             {
                 return
                     "Debe verificar el NIT antes de certificar.";
@@ -420,11 +436,13 @@ namespace QBTicketsApi.Controllers
             foreach (ItemDiscountRequest discount in discounts)
             {
                 string lineId =
-                    discount.LineId?.Trim() ?? string.Empty;
+                    discount.LineId?.Trim() ??
+                    string.Empty;
 
                 if (string.IsNullOrWhiteSpace(lineId))
                 {
-                    return "Todos los descuentos deben indicar el LineId.";
+                    return
+                        "Todos los descuentos deben indicar el LineId.";
                 }
 
                 if (discount.Amount < 0)
@@ -445,9 +463,8 @@ namespace QBTicketsApi.Controllers
             return null;
         }
 
-        private async Task<bool>
-    UserCanAccessDocumentAsync(
-        string id)
+        private async Task<bool> UserCanAccessDocumentAsync(
+            string id)
         {
             if (CanViewAllSales())
             {
@@ -457,8 +474,7 @@ namespace QBTicketsApi.Controllers
             string currentCashier =
                 GetCurrentCashierName();
 
-            if (string.IsNullOrWhiteSpace(
-                currentCashier))
+            if (string.IsNullOrWhiteSpace(currentCashier))
             {
                 return false;
             }
