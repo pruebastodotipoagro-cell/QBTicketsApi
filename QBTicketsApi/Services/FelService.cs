@@ -2,7 +2,7 @@
 using QBTicketsApi.Database;
 using QBTicketsApi.DTOs;
 using QBTicketsApi.Models;
-using System.Linq;
+using System.Globalization;
 using System.Text.Json;
 using System.Xml.Linq;
 
@@ -32,8 +32,11 @@ namespace QBTicketsApi.Services
     public class FelService
     {
         private readonly AppDbContext _db;
+
         private readonly MegaprintService _megaprintService;
+
         private readonly FelXmlBuilderService _xmlBuilder;
+
         private readonly CustomerLookupService _customerLookupService;
 
         public FelService(
@@ -43,9 +46,13 @@ namespace QBTicketsApi.Services
             CustomerLookupService customerLookupService)
         {
             _db = db;
+
             _megaprintService = megaprintService;
+
             _xmlBuilder = xmlBuilder;
-            _customerLookupService = customerLookupService;
+
+            _customerLookupService =
+                customerLookupService;
         }
 
         public FelResult CertifyMock(
@@ -66,59 +73,92 @@ namespace QBTicketsApi.Services
                         .ToString()
                         .ToUpperInvariant(),
 
-                CertificationDate = DateTime.UtcNow,
+                CertificationDate =
+                    DateTime.UtcNow,
 
                 Qr = "",
 
                 CustomerNit = "CF",
 
-                CustomerName = "Consumidor Final",
+                CustomerName =
+                    "Consumidor Final",
 
-                CertifierName = "MEGAPRINT",
+                CertifierName =
+                    "MEGAPRINT",
 
                 CertifierNit = ""
             };
         }
 
-        /// <summary>
-        /// Certifica un documento utilizando descuentos por línea.
-        /// Si ya fue certificado, devuelve los datos guardados.
-        /// </summary>
         public async Task<FelResult> CertifyAsync(
             string quickBooksId,
             string quickBooksJson,
             string saleType,
             string? nitOverride,
             string? customerNameOverride,
-            IReadOnlyCollection<ItemDiscountRequest>? discounts)
+            IReadOnlyCollection<ItemDiscountRequest>? discounts,
+            string priceType = "contado",
+            decimal creditPercentage = 0m)
         {
+            quickBooksId =
+                (quickBooksId ?? "")
+                    .Trim();
+
+            if (string.IsNullOrWhiteSpace(
+                quickBooksId))
+            {
+                throw new Exception(
+                    "El ID de QuickBooks es obligatorio."
+                );
+            }
+
+            if (string.IsNullOrWhiteSpace(
+                quickBooksJson))
+            {
+                throw new Exception(
+                    "No se recibió el documento de QuickBooks."
+                );
+            }
+
             Invoice? existing =
                 await _db.Invoices
-                    .FirstOrDefaultAsync(
-                        invoice =>
-                            invoice.QuickBooksId == quickBooksId &&
-                            invoice.IsCertified
-                    );
+                    .Include(x => x.Lines)
+                    .Where(x =>
+                        x.QuickBooksId ==
+                            quickBooksId &&
+                        x.IsCertified
+                    )
+                    .OrderByDescending(x =>
+                        x.CreatedAt
+                    )
+                    .FirstOrDefaultAsync();
 
             /*
-             * Si el documento ya fue certificado,
-             * se reutilizan los datos guardados.
+             * Si ya está certificada, se reutilizan
+             * exactamente los datos guardados.
              */
             if (existing != null)
             {
+                if (existing.IsCancelled)
+                {
+                    throw new Exception(
+                        "La factura está anulada y no puede imprimirse como vigente."
+                    );
+                }
+
                 string existingQr =
                     existing.FelQr ?? "";
 
-                /*
-                 * Las certificaciones anteriores quedaron con FelQr vacío.
-                 * Usamos el número de autorización FEL como contenido del QR.
-                 */
-                if (string.IsNullOrWhiteSpace(existingQr) &&
+                if (string.IsNullOrWhiteSpace(
+                        existingQr) &&
                     !string.IsNullOrWhiteSpace(
-                        existing.FelAuthorizationNumber))
+                        existing
+                            .FelAuthorizationNumber))
                 {
                     existingQr =
-                        existing.FelAuthorizationNumber.Trim();
+                        existing
+                            .FelAuthorizationNumber
+                            .Trim();
 
                     existing.FelQr =
                         existingQr;
@@ -135,10 +175,13 @@ namespace QBTicketsApi.Services
                         existing.FelDteNumber ?? "",
 
                     AuthorizationNumber =
-                        existing.FelAuthorizationNumber ?? "",
+                        existing
+                            .FelAuthorizationNumber
+                        ?? "",
 
                     CertificationDate =
-                        existing.FelCertificationDate
+                        existing
+                            .FelCertificationDate
                         ?? DateTime.UtcNow,
 
                     Qr =
@@ -146,50 +189,48 @@ namespace QBTicketsApi.Services
 
                     CustomerNit =
                         string.IsNullOrWhiteSpace(
-                            existing.CustomerNit
-                        )
+                            existing.CustomerNit)
                             ? "CF"
                             : existing.CustomerNit,
 
                     CustomerName =
                         string.IsNullOrWhiteSpace(
-                            existing.CustomerName
-                        )
+                            existing.CustomerName)
                             ? "Consumidor Final"
                             : existing.CustomerName,
 
                     CertifierName =
-                        existing.FelCertifierName ?? "",
+                        existing
+                            .FelCertifierName
+                        ?? "",
 
                     CertifierNit =
-                        existing.FelCertifierNit ?? ""
+                        existing
+                            .FelCertifierNit
+                        ?? ""
                 };
             }
 
             string nitNormalizado =
                 string.IsNullOrWhiteSpace(
-                    nitOverride
-                )
+                    nitOverride)
                     ? "CF"
                     : nitOverride
                         .Trim()
-                        .Replace("-", "");
+                        .Replace("-", "")
+                        .Replace(" ", "");
 
-            string? nombreFiscalNormalizado =
+            string nombreFiscalNormalizado =
                 string.IsNullOrWhiteSpace(
-                    customerNameOverride
-                )
-                    ? null
-                    : customerNameOverride.Trim();
+                    customerNameOverride)
+                    ? ""
+                    : customerNameOverride
+                        .Trim();
 
             if (nitNormalizado.Equals(
                 "CF",
                 StringComparison.OrdinalIgnoreCase))
             {
-                /*
-                 * CF puede llevar un nombre personalizado.
-                 * Solo usamos Consumidor Final cuando no se recibió nombre.
-                 */
                 if (string.IsNullOrWhiteSpace(
                     nombreFiscalNormalizado))
                 {
@@ -220,14 +261,30 @@ namespace QBTicketsApi.Services
             discounts ??=
                 new List<ItemDiscountRequest>();
 
-            ValidarDescuentos(discounts);
+            ValidarDescuentos(
+                discounts
+            );
+
+            priceType =
+                NormalizarTipoPrecio(
+                    priceType,
+                    saleType
+                );
+
+            creditPercentage =
+                NormalizarPorcentajeCredito(
+                    priceType,
+                    creditPercentage
+                );
 
             string xmlSinFirmar =
                 _xmlBuilder.BuildFactXml(
                     quickBooksJson,
                     nitNormalizado,
                     nombreFiscalNormalizado,
-                    discounts
+                    discounts,
+                    priceType,
+                    creditPercentage
                 );
 
             string token =
@@ -249,16 +306,28 @@ namespace QBTicketsApi.Services
                     );
 
             string xmlCertificado =
-                registro.xmlCertificado;
+                registro.xmlCertificado
+                ?? "";
 
             string uuid =
-                registro.uuid;
+                registro.uuid
+                ?? "";
+
+            if (string.IsNullOrWhiteSpace(
+                uuid))
+            {
+                throw new Exception(
+                    "Megaprint no devolvió el número de autorización FEL."
+                );
+            }
 
             string qrValue =
                 uuid;
 
             var serieNumero =
-                ExtractSerieYNumero(uuid);
+                ExtractSerieYNumero(
+                    uuid
+                );
 
             string serie =
                 serieNumero.serie;
@@ -284,8 +353,39 @@ namespace QBTicketsApi.Services
                 ParseResumen(
                     quickBooksJson,
                     discounts,
-                    nombreFiscalNormalizado
+                    nombreFiscalNormalizado,
+                    priceType,
+                    creditPercentage
                 );
+
+            List<InvoiceLine> lineas =
+                ParseLineasFactura(
+                    quickBooksJson,
+                    discounts,
+                    priceType,
+                    creditPercentage
+                );
+
+            decimal subtotalGuardado =
+                lineas.Count > 0
+                    ? lineas.Sum(x =>
+                        x.OriginalSubtotal)
+                    : resumen.totalOriginal;
+
+            decimal descuentoGuardado =
+                lineas.Count > 0
+                    ? lineas.Sum(x =>
+                        x.DiscountAmount)
+                    : resumen.discountTotal;
+
+            decimal totalGuardado =
+                subtotalGuardado -
+                descuentoGuardado;
+
+            if (totalGuardado < 0m)
+            {
+                totalGuardado = 0m;
+            }
 
             string customerNit =
                 ObtenerNitCliente(
@@ -295,73 +395,136 @@ namespace QBTicketsApi.Services
 
             string customerName =
                 string.IsNullOrWhiteSpace(
-                    resumen.customerName
-                )
+                    resumen.customerName)
                     ? "Consumidor Final"
-                    : resumen.customerName.Trim();
+                    : resumen.customerName
+                        .Trim();
 
-            /*
-             * No sustituimos el nombre solo porque el NIT sea CF.
-             * Se conserva el nombre usado para emitir la factura.
-             */
-            if (string.IsNullOrWhiteSpace(customerName))
+            Invoice? invoice =
+                await _db.Invoices
+                    .Include(x => x.Lines)
+                    .Where(x =>
+                        x.QuickBooksId ==
+                            quickBooksId
+                    )
+                    .OrderByDescending(x =>
+                        x.CreatedAt
+                    )
+                    .FirstOrDefaultAsync();
+
+            if (invoice == null)
             {
-                customerName =
-                    "Consumidor Final";
+                invoice =
+                    new Invoice
+                    {
+                        QuickBooksId =
+                            quickBooksId,
+
+                        CreatedAt =
+                            DateTime.UtcNow
+                    };
+
+                _db.Invoices.Add(
+                    invoice
+                );
+            }
+            else
+            {
+                if (invoice.IsCancelled)
+                {
+                    throw new Exception(
+                        "La factura está anulada y no puede certificarse."
+                    );
+                }
+
+                if (invoice.Lines.Count > 0)
+                {
+                    _db.InvoiceLines
+                        .RemoveRange(
+                            invoice.Lines
+                        );
+                }
             }
 
-            var invoice = new Invoice
-            {
-                QuickBooksId =
-                    quickBooksId,
+            invoice.InvoiceNumber =
+                resumen.docNumber;
 
-                InvoiceNumber =
-                    resumen.docNumber,
+            invoice.CustomerName =
+                customerName;
 
-                CustomerName =
-                    customerName,
+            invoice.CustomerNit =
+                customerNit;
 
-                CustomerNit =
-                    customerNit,
+            invoice.IssueDate =
+                resumen.issueDate;
 
-                IssueDate =
-                    resumen.issueDate,
+            invoice.Subtotal =
+                subtotalGuardado;
 
-                Total =
-                    resumen.totalFinal,
+            invoice.DiscountTotal =
+                descuentoGuardado;
 
-                SaleType =
-                    saleType,
+            invoice.Total =
+                totalGuardado;
 
-                Status =
-                    "certified",
+            invoice.SaleType =
+                string.IsNullOrWhiteSpace(
+                    saleType)
+                    ? "contado"
+                    : saleType
+                        .Trim()
+                        .ToLowerInvariant();
 
-                FelSerie =
-                    serie,
+            invoice.PriceType =
+                priceType;
 
-                FelDteNumber =
-                    numero,
+            invoice.CreditPercentage =
+                creditPercentage;
 
-                FelAuthorizationNumber =
-                    uuid,
+            invoice.Status =
+                "certified";
 
-                FelCertificationDate =
-                    certificationDate,
+            invoice.FelSerie =
+                serie;
 
-                FelQr =
-                    qrValue,
+            invoice.FelDteNumber =
+                numero;
 
-                FelCertifierName =
-                    certifierName,
+            invoice.FelAuthorizationNumber =
+                uuid;
 
-                FelCertifierNit =
-                    certifierNit,
+            invoice.FelCertificationDate =
+                certificationDate;
 
-                IsCertified =
-                    true
-            };
+            invoice.FelQr =
+                qrValue;
 
-            _db.Invoices.Add(invoice);
+            invoice.FelCertifierName =
+                certifierName;
+
+            invoice.FelCertifierNit =
+                certifierNit;
+
+            invoice.IsCertified =
+                true;
+
+            invoice.IsCancelled =
+                false;
+
+            invoice.CancellationReason =
+                "";
+
+            invoice.CancellationDate =
+                null;
+
+            invoice.FelCancellationAuthorizationNumber =
+                "";
+
+            invoice.FelCancellationXml =
+                "";
+
+            invoice.Lines =
+                lineas;
 
             await _db.SaveChangesAsync();
 
@@ -397,24 +560,24 @@ namespace QBTicketsApi.Services
         }
 
         /*
-         * Sobrecarga para mantener compatibilidad
-         * con llamadas anteriores sin descuentos por línea.
+         * Sobrecarga para conservar compatibilidad
+         * con llamadas antiguas.
          */
         public Task<FelResult> CertifyAsync(
             string quickBooksId,
             string quickBooksJson,
             string saleType,
             string? nitOverride = null,
-            decimal descuento = 0)
+            decimal descuento = 0m)
         {
-            if (descuento < 0)
+            if (descuento < 0m)
             {
                 throw new Exception(
                     "El descuento no puede ser negativo."
                 );
             }
 
-            if (descuento > 0)
+            if (descuento > 0m)
             {
                 throw new Exception(
                     "El descuento general ya no está permitido. " +
@@ -422,14 +585,90 @@ namespace QBTicketsApi.Services
                 );
             }
 
+            string priceType =
+                saleType.Equals(
+                    "credito",
+                    StringComparison.OrdinalIgnoreCase)
+                    ? "credito"
+                    : "contado";
+
+            decimal creditPercentage =
+                priceType == "credito"
+                    ? 3m
+                    : 0m;
+
             return CertifyAsync(
                 quickBooksId,
                 quickBooksJson,
                 saleType,
                 nitOverride,
                 null,
-                new List<ItemDiscountRequest>()
+                Array.Empty<ItemDiscountRequest>(),
+                priceType,
+                creditPercentage
             );
+        }
+
+        private static string NormalizarTipoPrecio(
+            string? priceType,
+            string? saleType)
+        {
+            string normalized =
+                (priceType ?? "")
+                    .Trim()
+                    .ToLowerInvariant();
+
+            normalized =
+                normalized
+                    .Replace("é", "e")
+                    .Replace("í", "i");
+
+            if (string.IsNullOrWhiteSpace(
+                normalized))
+            {
+                normalized =
+                    string.Equals(
+                        saleType,
+                        "credito",
+                        StringComparison.OrdinalIgnoreCase)
+                        ? "credito"
+                        : "contado";
+            }
+
+            if (normalized != "contado" &&
+                normalized != "credito")
+            {
+                throw new Exception(
+                    "El tipo de precio debe ser contado o crédito."
+                );
+            }
+
+            return normalized;
+        }
+
+        private static decimal
+            NormalizarPorcentajeCredito(
+                string priceType,
+                decimal creditPercentage)
+        {
+            if (priceType == "contado")
+            {
+                return 0m;
+            }
+
+            if (creditPercentage <= 0m)
+            {
+                return 3m;
+            }
+
+            if (creditPercentage != 3m)
+            {
+                throw new Exception(
+                    "El porcentaje de precio crédito debe ser 3%."
+                );
+            }
+
+            return creditPercentage;
         }
 
         private static void ValidarDescuentos(
@@ -440,7 +679,9 @@ namespace QBTicketsApi.Services
                     StringComparer.OrdinalIgnoreCase
                 );
 
-            foreach (ItemDiscountRequest discount in discounts)
+            foreach (
+                ItemDiscountRequest discount
+                in discounts)
             {
                 if (discount == null)
                 {
@@ -451,26 +692,26 @@ namespace QBTicketsApi.Services
                     discount.LineId?.Trim()
                     ?? "";
 
-                if (string.IsNullOrWhiteSpace(lineId))
+                if (string.IsNullOrWhiteSpace(
+                    lineId))
                 {
                     throw new Exception(
                         "Todo descuento debe indicar el LineId."
                     );
                 }
 
-                if (discount.Amount < 0)
+                if (discount.Amount < 0m)
                 {
                     throw new Exception(
-                        $"El descuento de la línea {lineId} " +
-                        "no puede ser negativo."
+                        $"El descuento de la línea {lineId} no puede ser negativo."
                     );
                 }
 
-                if (!lineIds.Add(lineId))
+                if (!lineIds.Add(
+                    lineId))
                 {
                     throw new Exception(
-                        $"La línea {lineId} está repetida " +
-                        "en la lista de descuentos."
+                        $"La línea {lineId} está repetida en la lista de descuentos."
                     );
                 }
             }
@@ -482,32 +723,308 @@ namespace QBTicketsApi.Services
         {
             string customerNit;
 
-            if (!string.IsNullOrWhiteSpace(nitOverride))
+            if (!string.IsNullOrWhiteSpace(
+                nitOverride))
             {
                 customerNit =
                     nitOverride
                         .Trim()
-                        .Replace("-", "");
+                        .Replace("-", "")
+                        .Replace(" ", "");
             }
             else
             {
                 customerNit =
                     _customerLookupService
-                        .GetNit(customerName);
+                        .GetNit(
+                            customerName
+                        );
             }
 
-            if (string.IsNullOrWhiteSpace(customerNit))
+            if (string.IsNullOrWhiteSpace(
+                customerNit))
             {
-                customerNit = "CF";
+                customerNit =
+                    "CF";
             }
 
             return customerNit;
         }
 
+        private static List<InvoiceLine>
+            ParseLineasFactura(
+                string quickBooksJson,
+                IReadOnlyCollection<ItemDiscountRequest> discounts,
+                string priceType,
+                decimal creditPercentage)
+        {
+            using JsonDocument jsonDocument =
+                JsonDocument.Parse(
+                    quickBooksJson
+                );
+
+            JsonElement queryResponse =
+                jsonDocument.RootElement
+                    .GetProperty(
+                        "QueryResponse"
+                    );
+
+            JsonElement quickBooksDocument;
+
+            if (queryResponse.TryGetProperty(
+                "Invoice",
+                out JsonElement invoices))
+            {
+                quickBooksDocument =
+                    invoices[0];
+            }
+            else if (
+                queryResponse.TryGetProperty(
+                    "SalesReceipt",
+                    out JsonElement receipts))
+            {
+                quickBooksDocument =
+                    receipts[0];
+            }
+            else
+            {
+                throw new Exception(
+                    "No se encontró Invoice ni SalesReceipt."
+                );
+            }
+
+            decimal priceFactor =
+                priceType == "credito"
+                    ? 1m + (creditPercentage / 100m)
+                    : 1m;
+
+            Dictionary<string, decimal>
+                descuentosPorLinea =
+                    discounts
+                        .Where(x =>
+                            x != null &&
+                            !string.IsNullOrWhiteSpace(
+                                x.LineId
+                            )
+                        )
+                        .GroupBy(
+                            x => x.LineId.Trim(),
+                            StringComparer
+                                .OrdinalIgnoreCase
+                        )
+                        .ToDictionary(
+                            group => group.Key,
+                            group => group.Sum(
+                                x => x.Amount
+                            ),
+                            StringComparer
+                                .OrdinalIgnoreCase
+                        );
+
+            var resultado =
+                new List<InvoiceLine>();
+
+            if (!quickBooksDocument
+                    .TryGetProperty(
+                        "Line",
+                        out JsonElement lines) ||
+                lines.ValueKind !=
+                    JsonValueKind.Array)
+            {
+                return resultado;
+            }
+
+            foreach (
+                JsonElement line
+                in lines.EnumerateArray())
+            {
+                string detailType =
+                    GetJsonString(
+                        line,
+                        "DetailType"
+                    );
+
+                if (!detailType.Equals(
+                    "SalesItemLineDetail",
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (!line.TryGetProperty(
+                    "SalesItemLineDetail",
+                    out JsonElement salesDetail))
+                {
+                    continue;
+                }
+
+                string lineId =
+                    GetJsonString(
+                        line,
+                        "Id"
+                    );
+
+                string description =
+                    GetJsonString(
+                        line,
+                        "Description"
+                    );
+
+                string itemId =
+                    "";
+
+                if (salesDetail.TryGetProperty(
+                    "ItemRef",
+                    out JsonElement itemRef))
+                {
+                    itemId =
+                        GetJsonString(
+                            itemRef,
+                            "value"
+                        );
+
+                    if (string.IsNullOrWhiteSpace(
+                        description))
+                    {
+                        description =
+                            GetJsonString(
+                                itemRef,
+                                "name"
+                            );
+                    }
+                }
+
+                decimal quantity =
+                    GetJsonDecimal(
+                        salesDetail,
+                        "Qty"
+                    );
+
+                if (quantity <= 0m)
+                {
+                    quantity =
+                        1m;
+                }
+
+                decimal originalUnitPrice =
+                    GetJsonDecimal(
+                        salesDetail,
+                        "UnitPrice"
+                    );
+
+                decimal originalSubtotal =
+                    GetJsonDecimal(
+                        line,
+                        "Amount"
+                    );
+
+                if (originalUnitPrice <= 0m &&
+                    quantity > 0m)
+                {
+                    originalUnitPrice =
+                        originalSubtotal /
+                        quantity;
+                }
+
+                if (originalSubtotal <= 0m)
+                {
+                    originalSubtotal =
+                        originalUnitPrice *
+                        quantity;
+                }
+
+                decimal appliedUnitPrice =
+                    Math.Round(
+                        originalUnitPrice *
+                        priceFactor,
+                        2,
+                        MidpointRounding.AwayFromZero
+                    );
+
+                decimal appliedSubtotal =
+                    Math.Round(
+                        appliedUnitPrice *
+                        quantity,
+                        2,
+                        MidpointRounding.AwayFromZero
+                    );
+
+                decimal discountAmount =
+                    0m;
+
+                if (!string.IsNullOrWhiteSpace(
+                        lineId) &&
+                    descuentosPorLinea
+                        .TryGetValue(
+                            lineId,
+                            out decimal foundDiscount))
+                {
+                    discountAmount =
+                        foundDiscount;
+                }
+
+                if (discountAmount < 0m)
+                {
+                    discountAmount =
+                        0m;
+                }
+
+                if (discountAmount >
+                    appliedSubtotal)
+                {
+                    throw new Exception(
+                        $"El descuento de la línea {lineId} supera el subtotal del producto."
+                    );
+                }
+
+                decimal finalTotal =
+                    appliedSubtotal -
+                    discountAmount;
+
+                resultado.Add(
+                    new InvoiceLine
+                    {
+                        QuickBooksLineId =
+                            lineId,
+
+                        QuickBooksItemId =
+                            itemId,
+
+                        Description =
+                            description,
+
+                        Quantity =
+                            quantity,
+
+                        OriginalUnitPrice =
+                            originalUnitPrice,
+
+                        AppliedUnitPrice =
+                            appliedUnitPrice,
+
+                        OriginalSubtotal =
+                            appliedSubtotal,
+
+                        DiscountAmount =
+                            discountAmount,
+
+                        FinalTotal =
+                            finalTotal,
+
+                        CreatedAt =
+                            DateTime.UtcNow
+                    }
+                );
+            }
+
+            return resultado;
+        }
+
         private static (
             string serie,
             string numero
-        ) ExtractSerieYNumero(string uuid)
+        ) ExtractSerieYNumero(
+            string uuid)
         {
             string clean =
                 (uuid ?? "")
@@ -515,7 +1032,10 @@ namespace QBTicketsApi.Services
 
             string serie =
                 clean.Length >= 8
-                    ? clean.Substring(0, 8)
+                    ? clean.Substring(
+                        0,
+                        8
+                    )
                     : clean;
 
             string numero =
@@ -524,7 +1044,10 @@ namespace QBTicketsApi.Services
             if (clean.Length >= 16)
             {
                 string hexNumero =
-                    clean.Substring(8, 8);
+                    clean.Substring(
+                        8,
+                        8
+                    );
 
                 numero =
                     Convert.ToInt64(
@@ -548,13 +1071,13 @@ namespace QBTicketsApi.Services
         {
             try
             {
-                XDocument doc =
+                XDocument document =
                     XDocument.Parse(
                         xmlCertificado
                     );
 
                 string name =
-                    doc.Descendants()
+                    document.Descendants()
                         .FirstOrDefault(
                             element =>
                                 element.Name.LocalName ==
@@ -564,7 +1087,7 @@ namespace QBTicketsApi.Services
                     ?? "";
 
                 string nit =
-                    doc.Descendants()
+                    document.Descendants()
                         .FirstOrDefault(
                             element =>
                                 element.Name.LocalName ==
@@ -597,33 +1120,36 @@ namespace QBTicketsApi.Services
         ) ParseResumen(
             string quickBooksJson,
             IReadOnlyCollection<ItemDiscountRequest> discounts,
-            string? customerNameOverride)
+            string? customerNameOverride,
+            string priceType,
+            decimal creditPercentage)
         {
-            using JsonDocument doc =
+            using JsonDocument document =
                 JsonDocument.Parse(
                     quickBooksJson
                 );
 
             JsonElement query =
-                doc.RootElement
+                document.RootElement
                     .GetProperty(
                         "QueryResponse"
                     );
 
-            JsonElement qbDoc;
+            JsonElement qbDocument;
 
             if (query.TryGetProperty(
                 "Invoice",
                 out JsonElement invoices))
             {
-                qbDoc =
+                qbDocument =
                     invoices[0];
             }
-            else if (query.TryGetProperty(
-                "SalesReceipt",
-                out JsonElement receipts))
+            else if (
+                query.TryGetProperty(
+                    "SalesReceipt",
+                    out JsonElement receipts))
             {
-                qbDoc =
+                qbDocument =
                     receipts[0];
             }
             else
@@ -634,72 +1160,78 @@ namespace QBTicketsApi.Services
             }
 
             string docNumber =
-                "";
-
-            if (qbDoc.TryGetProperty(
-                "DocNumber",
-                out JsonElement docNumberElement))
-            {
-                docNumber =
-                    docNumberElement.GetString()
-                    ?? "";
-            }
+                GetJsonString(
+                    qbDocument,
+                    "DocNumber"
+                );
 
             string customerName =
                 "Consumidor Final";
 
-            if (qbDoc.TryGetProperty(
+            if (qbDocument.TryGetProperty(
                     "CustomerRef",
-                    out JsonElement customerRef) &&
-                customerRef.TryGetProperty(
-                    "name",
-                    out JsonElement nameElement))
+                    out JsonElement customerRef))
             {
                 customerName =
-                    nameElement.GetString()
-                    ?? "Consumidor Final";
+                    GetJsonString(
+                        customerRef,
+                        "name"
+                    );
+
+                if (string.IsNullOrWhiteSpace(
+                    customerName))
+                {
+                    customerName =
+                        "Consumidor Final";
+                }
             }
 
             if (!string.IsNullOrWhiteSpace(
                 customerNameOverride))
             {
                 customerName =
-                    customerNameOverride.Trim();
+                    customerNameOverride
+                        .Trim();
             }
+
+            decimal quickBooksTotal =
+                GetJsonDecimal(
+                    qbDocument,
+                    "TotalAmt"
+                );
+
+            decimal priceFactor =
+                priceType == "credito"
+                    ? 1m + (creditPercentage / 100m)
+                    : 1m;
 
             decimal totalOriginal =
-                0;
-
-            if (qbDoc.TryGetProperty(
-                "TotalAmt",
-                out JsonElement totalElement))
-            {
-                totalElement.TryGetDecimal(
-                    out totalOriginal
+                Math.Round(
+                    quickBooksTotal * priceFactor,
+                    2,
+                    MidpointRounding.AwayFromZero
                 );
-            }
 
             decimal discountTotal =
                 discounts
-                    .Where(
-                        discount =>
-                            discount != null
+                    .Where(x =>
+                        x != null
                     )
-                    .Sum(
-                        discount =>
-                            discount.Amount
+                    .Sum(x =>
+                        x.Amount
                     );
 
-            if (discountTotal < 0)
+            if (discountTotal < 0m)
             {
-                discountTotal = 0;
+                discountTotal =
+                    0m;
             }
 
-            if (discountTotal > totalOriginal)
+            if (discountTotal >
+                totalOriginal)
             {
                 throw new Exception(
-                    "El descuento total supera el total " +
-                    "del documento."
+                    "El descuento total supera el total del documento."
                 );
             }
 
@@ -707,25 +1239,26 @@ namespace QBTicketsApi.Services
                 totalOriginal -
                 discountTotal;
 
-            DateTime issueDate;
+            DateTime issueDate =
+                DateTime.UtcNow;
 
-            if (qbDoc.TryGetProperty(
-                    "TxnDate",
-                    out JsonElement txnDateElement) &&
-                DateTime.TryParse(
-                    txnDateElement.GetString(),
-                    out DateTime parsedDate))
+            string issueDateText =
+                GetJsonString(
+                    qbDocument,
+                    "TxnDate"
+                );
+
+            if (DateTime.TryParse(
+                issueDateText,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out DateTime parsedDate))
             {
                 issueDate =
                     DateTime.SpecifyKind(
                         parsedDate,
                         DateTimeKind.Utc
                     );
-            }
-            else
-            {
-                issueDate =
-                    DateTime.UtcNow;
             }
 
             return (
@@ -736,6 +1269,58 @@ namespace QBTicketsApi.Services
                 totalFinal,
                 issueDate
             );
+        }
+
+        private static string GetJsonString(
+            JsonElement element,
+            string propertyName)
+        {
+            if (!element.TryGetProperty(
+                    propertyName,
+                    out JsonElement value))
+            {
+                return "";
+            }
+
+            if (value.ValueKind ==
+                JsonValueKind.String)
+            {
+                return value.GetString()
+                    ?? "";
+            }
+
+            return value.ToString();
+        }
+
+        private static decimal GetJsonDecimal(
+            JsonElement element,
+            string propertyName)
+        {
+            if (!element.TryGetProperty(
+                    propertyName,
+                    out JsonElement value))
+            {
+                return 0m;
+            }
+
+            if (value.ValueKind ==
+                    JsonValueKind.Number &&
+                value.TryGetDecimal(
+                    out decimal number))
+            {
+                return number;
+            }
+
+            string text =
+                value.ToString();
+
+            return decimal.TryParse(
+                text,
+                NumberStyles.Any,
+                CultureInfo.InvariantCulture,
+                out decimal parsed)
+                    ? parsed
+                    : 0m;
         }
     }
 }

@@ -22,7 +22,9 @@ namespace QBTicketsApi.Services
                 fel,
                 saleType,
                 null,
-                new List<ItemDiscountRequest>()
+                new List<ItemDiscountRequest>(),
+                "contado",
+                0m
             );
         }
 
@@ -34,7 +36,9 @@ namespace QBTicketsApi.Services
             FelResult fel,
             string saleType,
             string? customerNameOverride,
-            IReadOnlyCollection<ItemDiscountRequest>? discounts)
+            IReadOnlyCollection<ItemDiscountRequest>? discounts,
+            string priceType = "contado",
+            decimal creditPercentage = 0m)
         {
             using var doc = JsonDocument.Parse(json);
 
@@ -114,8 +118,18 @@ namespace QBTicketsApi.Services
             var discountMap =
                 CrearMapaDescuentos(discounts);
 
+            decimal priceFactor =
+                ObtenerFactorPrecio(
+                    priceType,
+                    creditPercentage
+                );
+
             var ticketLines =
-                ObtenerLineasTicket(receipt, discountMap);
+                ObtenerLineasTicket(
+                    receipt,
+                    discountMap,
+                    priceFactor
+                );
 
             decimal subtotal =
                 ticketLines.Sum(x => x.Subtotal);
@@ -563,7 +577,9 @@ namespace QBTicketsApi.Services
     string saleType,
     string nit,
     string customerNameOverride,
-    IReadOnlyCollection<ItemDiscountRequest> discounts)
+    IReadOnlyCollection<ItemDiscountRequest> discounts,
+    string priceType = "contado",
+    decimal creditPercentage = 0m)
         {
             using var doc = JsonDocument.Parse(json);
 
@@ -642,10 +658,17 @@ namespace QBTicketsApi.Services
             var discountMap =
                 CrearMapaDescuentos(discounts);
 
+            decimal priceFactor =
+                ObtenerFactorPrecio(
+                    priceType,
+                    creditPercentage
+                );
+
             var ticketLines =
                 ObtenerLineasTicket(
                     receipt,
-                    discountMap
+                    discountMap,
+                    priceFactor
                 );
 
             decimal subtotal =
@@ -998,7 +1021,8 @@ namespace QBTicketsApi.Services
 
         private static List<TicketLine> ObtenerLineasTicket(
     JsonElement receipt,
-    IReadOnlyDictionary<string, decimal> discountMap)
+    IReadOnlyDictionary<string, decimal> discountMap,
+    decimal priceFactor)
         {
             var result = new List<TicketLine>();
 
@@ -1029,16 +1053,31 @@ namespace QBTicketsApi.Services
                     quantity = 1;
                 }
 
-                decimal subtotal =
-                GetDecimal(line, "Amount");
+                decimal originalSubtotal =
+                    GetDecimal(line, "Amount");
 
-                decimal unitPrice =
+                decimal originalUnitPrice =
                     GetDecimal(detail, "UnitPrice", 0);
 
-                if (unitPrice <= 0 && quantity > 0)
+                if (originalUnitPrice <= 0 && quantity > 0)
                 {
-                    unitPrice = subtotal / quantity;
+                    originalUnitPrice =
+                        originalSubtotal / quantity;
                 }
+
+                decimal unitPrice =
+                    Math.Round(
+                        originalUnitPrice * priceFactor,
+                        2,
+                        MidpointRounding.AwayFromZero
+                    );
+
+                decimal subtotal =
+                    Math.Round(
+                        unitPrice * quantity,
+                        2,
+                        MidpointRounding.AwayFromZero
+                    );
 
                 decimal discount = 0;
 
@@ -1113,6 +1152,45 @@ namespace QBTicketsApi.Services
             }
 
             return result;
+        }
+
+        private static decimal ObtenerFactorPrecio(
+            string? priceType,
+            decimal creditPercentage)
+        {
+            string normalized =
+                (priceType ?? "")
+                    .Trim()
+                    .ToLowerInvariant()
+                    .Replace("é", "e")
+                    .Replace("í", "i");
+
+            if (string.IsNullOrWhiteSpace(normalized) ||
+                normalized == "contado")
+            {
+                return 1m;
+            }
+
+            if (normalized != "credito")
+            {
+                throw new Exception(
+                    "El tipo de precio debe ser contado o crédito."
+                );
+            }
+
+            if (creditPercentage <= 0m)
+            {
+                creditPercentage = 3m;
+            }
+
+            if (creditPercentage != 3m)
+            {
+                throw new Exception(
+                    "El porcentaje del precio crédito debe ser 3%."
+                );
+            }
+
+            return 1m + (creditPercentage / 100m);
         }
 
         private static Dictionary<string, decimal>

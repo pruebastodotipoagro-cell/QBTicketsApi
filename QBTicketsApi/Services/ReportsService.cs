@@ -285,6 +285,7 @@ namespace QBTicketsApi.Services
             Invoice? stored =
                 await _db.Invoices
                     .AsNoTracking()
+                    .Include(x => x.Lines)
                     .Where(x =>
                         x.QuickBooksId == quickBooksId
                     )
@@ -430,14 +431,19 @@ namespace QBTicketsApi.Services
                         saleType,
 
                     Subtotal =
-                        itemResponse.Subtotal,
+                        stored != null &&
+                        stored.Subtotal > 0m
+                            ? stored.Subtotal
+                            : itemResponse.Subtotal,
 
                     DiscountTotal =
-                        itemResponse.DiscountTotal,
+                        stored != null
+                            ? stored.DiscountTotal
+                            : itemResponse.DiscountTotal,
 
                     Total =
                         stored != null &&
-                        stored.Total > 0
+                        stored.Total > 0m
                             ? stored.Total
                             : itemResponse.Total,
 
@@ -449,34 +455,71 @@ namespace QBTicketsApi.Services
                         !isCancelled
                 };
 
-            detail.Items =
-                itemResponse.Items
-                    .Select(item =>
-                        new SaleDetailItemDto
-                        {
-                            LineId =
-                                item.LineId,
+            if (stored != null &&
+                stored.Lines != null &&
+                stored.Lines.Count > 0)
+            {
+                detail.Items =
+                    stored.Lines
+                        .OrderBy(x => x.Id)
+                        .Select(line =>
+                            new SaleDetailItemDto
+                            {
+                                LineId =
+                                    line.QuickBooksLineId,
 
-                            ItemId =
-                                item.ItemId,
+                                ItemId =
+                                    line.QuickBooksItemId,
 
-                            Quantity =
-                                item.Quantity,
+                                Quantity =
+                                    line.Quantity,
 
-                            Description =
-                                item.Description,
+                                Description =
+                                    line.Description,
 
-                            UnitPrice =
-                                item.UnitPrice,
+                                UnitPrice =
+                                    line.AppliedUnitPrice,
 
-                            Discount =
-                                item.CurrentDiscount,
+                                Discount =
+                                    line.DiscountAmount,
 
-                            Total =
-                                item.Total
-                        }
-                    )
-                    .ToList();
+                                Total =
+                                    line.FinalTotal
+                            }
+                        )
+                        .ToList();
+            }
+            else
+            {
+                detail.Items =
+                    itemResponse.Items
+                        .Select(item =>
+                            new SaleDetailItemDto
+                            {
+                                LineId =
+                                    item.LineId,
+
+                                ItemId =
+                                    item.ItemId,
+
+                                Quantity =
+                                    item.Quantity,
+
+                                Description =
+                                    item.Description,
+
+                                UnitPrice =
+                                    item.UnitPrice,
+
+                                Discount =
+                                    item.CurrentDiscount,
+
+                                Total =
+                                    item.Total
+                            }
+                        )
+                        .ToList();
+            }
 
             return detail;
         }
@@ -836,6 +879,56 @@ namespace QBTicketsApi.Services
                         endText
                     );
 
+            List<string> generalReceiptIds =
+                cashReceipts
+                    .Select(x => x.QbInvoiceId)
+                    .Where(x =>
+                        !string.IsNullOrWhiteSpace(x)
+                    )
+                    .Distinct()
+                    .ToList();
+
+            List<Invoice> generalStoredInvoices =
+                await _db.Invoices
+                    .AsNoTracking()
+                    .Where(x =>
+                        generalReceiptIds.Contains(
+                            x.QuickBooksId
+                        )
+                    )
+                    .ToListAsync();
+
+            Dictionary<string, Invoice>
+                generalStoredById =
+                    generalStoredInvoices
+                        .GroupBy(x =>
+                            x.QuickBooksId
+                        )
+                        .ToDictionary(
+                            group => group.Key,
+                            group => group
+                                .OrderByDescending(x =>
+                                    x.CreatedAt
+                                )
+                                .First(),
+                            StringComparer.OrdinalIgnoreCase
+                        );
+
+            cashReceipts =
+                cashReceipts
+                    .Where(sale =>
+                    {
+                        if (!generalStoredById.TryGetValue(
+                                sale.QbInvoiceId,
+                                out Invoice? storedSale))
+                        {
+                            return true;
+                        }
+
+                        return !storedSale.IsCancelled;
+                    })
+                    .ToList();
+
             decimal cashSales = 0m;
             decimal checkSales = 0m;
             decimal creditCardSales = 0m;
@@ -851,23 +944,32 @@ namespace QBTicketsApi.Services
                             )
                     );
 
+                decimal saleTotal =
+                    generalStoredById.TryGetValue(
+                        sale.QbInvoiceId,
+                        out Invoice? storedSale
+                    ) &&
+                    storedSale.Total > 0m
+                        ? storedSale.Total
+                        : sale.Total;
+
                 if (paymentMethod.Equals(
                     "Efectivo",
                     StringComparison.OrdinalIgnoreCase))
                 {
-                    cashSales += sale.Total;
+                    cashSales += saleTotal;
                 }
                 else if (paymentMethod.Equals(
                     "Cheque",
                     StringComparison.OrdinalIgnoreCase))
                 {
-                    checkSales += sale.Total;
+                    checkSales += saleTotal;
                 }
                 else if (paymentMethod.Equals(
                     "Tarjeta de crédito",
                     StringComparison.OrdinalIgnoreCase))
                 {
-                    creditCardSales += sale.Total;
+                    creditCardSales += saleTotal;
                 }
             }
 
@@ -987,6 +1089,43 @@ namespace QBTicketsApi.Services
             List<InvoiceResponseDto> sales =
                 cashSales
                     .Concat(creditSales)
+                    .ToList();
+
+            List<string> productSaleIds =
+                sales
+                    .Select(x => x.QbInvoiceId)
+                    .Where(x =>
+                        !string.IsNullOrWhiteSpace(x)
+                    )
+                    .Distinct()
+                    .ToList();
+
+            HashSet<string> cancelledProductSaleIds =
+                (
+                    await _db.Invoices
+                        .AsNoTracking()
+                        .Where(x =>
+                            productSaleIds.Contains(
+                                x.QuickBooksId
+                            ) &&
+                            x.IsCancelled
+                        )
+                        .Select(x =>
+                            x.QuickBooksId
+                        )
+                        .ToListAsync()
+                )
+                .ToHashSet(
+                    StringComparer.OrdinalIgnoreCase
+                );
+
+            sales =
+                sales
+                    .Where(x =>
+                        !cancelledProductSaleIds.Contains(
+                            x.QbInvoiceId
+                        )
+                    )
                     .ToList();
 
             if (!string.IsNullOrWhiteSpace(cashierName))

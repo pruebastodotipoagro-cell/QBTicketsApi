@@ -14,18 +14,40 @@
 
         public DateTime IssueDate { get; set; }
 
+        /*
+         * Subtotal antes del descuento.
+         */
+        public decimal Subtotal { get; set; }
+
+        /*
+         * Descuento total aplicado.
+         */
+        public decimal DiscountTotal { get; set; }
+
+        /*
+         * Total final después del descuento.
+         */
         public decimal Total { get; set; }
 
         public string SaleType { get; set; } = "contado";
+
+        /*
+         * contado
+         * credito
+         */
+        public string PriceType { get; set; } = "contado";
+
+        /*
+         * Para crédito será 3.
+         * Para contado será 0.
+         */
+        public decimal CreditPercentage { get; set; }
 
         public string Status { get; set; } = "pending";
 
         public DateTime CreatedAt { get; set; } =
             DateTime.UtcNow;
 
-        /*
-         * Datos de certificación FEL.
-         */
         public string FelSerie { get; set; } = "";
 
         public string FelDteNumber { get; set; } = "";
@@ -40,14 +62,9 @@
 
         public string FelCertifierNit { get; set; } = "";
 
-        public bool IsCertified { get; set; } =
-            false;
+        public bool IsCertified { get; set; }
 
-        /*
-         * Datos de anulación FEL.
-         */
-        public bool IsCancelled { get; set; } =
-            false;
+        public bool IsCancelled { get; set; }
 
         public string CancellationReason { get; set; } = "";
 
@@ -60,5 +77,8 @@
         } = "";
 
         public string FelCancellationXml { get; set; } = "";
+
+        public List<InvoiceLine> Lines { get; set; } =
+            new List<InvoiceLine>();
     }
 }
