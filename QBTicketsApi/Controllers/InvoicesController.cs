@@ -255,6 +255,37 @@ namespace QBTicketsApi.Controllers
             }
         }
 
+        [HttpPost("{id}/sync-dashboard")]
+        public async Task<IActionResult> SyncDashboard(string id, [FromBody] DashboardSyncRequest? request)
+        {
+            try
+            {
+                request ??= new DashboardSyncRequest();
+                var result = await _quickBooksService.SynchronizeDashboardDocumentAsync(
+                    id, request.PriceType, request.CreditPercentage, request.Discounts);
+                return Ok(result.Result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { success = false, error = ex.Message });
+            }
+        }
+
+        [HttpPost("sync-historical-discounts")]
+        public async Task<IActionResult> SyncHistoricalDiscounts()
+        {
+            if (!CanViewAllSales()) return Forbid();
+            try
+            {
+                List<DashboardSyncResponse> results = await _quickBooksService.SynchronizeHistoricalDiscountsAsync();
+                return Ok(new { success = true, total = results.Count, results });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { success = false, error = ex.Message });
+            }
+        }
+
         private List<InvoiceResponseDto>
             FilterInvoicesForCurrentUser(
                 List<InvoiceResponseDto> invoices)

@@ -93,11 +93,18 @@ namespace QBTicketsApi.Controllers
                 if (storedInvoice != null &&
                     storedInvoice.IsCancelled)
                 {
+                    string quickBooksMessageAlreadyCancelled =
+                        await _quickBooksService
+                            .CancelDocumentInQuickBooksAsync(
+                                id
+                            );
+
                     return Ok(new
                     {
                         success = true,
                         message =
-                            "La venta ya se encuentra anulada.",
+                            "La venta ya estaba anulada en el sistema. " +
+                            quickBooksMessageAlreadyCancelled,
                         quickBooksId =
                             storedInvoice.QuickBooksId,
                         isCertified =
@@ -126,13 +133,21 @@ namespace QBTicketsApi.Controllers
                                 reason
                             );
 
+                    string quickBooksMessageCertified =
+                        await _quickBooksService
+                            .CancelDocumentInQuickBooksAsync(
+                                id
+                            );
+
                     return Ok(new
                     {
                         success =
                             felResult.Success,
 
                         message =
-                            felResult.Message,
+                            felResult.Message +
+                            " " +
+                            quickBooksMessageCertified,
 
                         quickBooksId =
                             felResult.QuickBooksId,
@@ -261,13 +276,20 @@ namespace QBTicketsApi.Controllers
                 storedInvoice.FelCancellationXml =
                     "";
 
+                string quickBooksMessage =
+                    await _quickBooksService
+                        .CancelDocumentInQuickBooksAsync(
+                            id
+                        );
+
                 await _db.SaveChangesAsync();
 
                 return Ok(new
                 {
                     success = true,
                     message =
-                        "La venta no certificada fue anulada correctamente dentro del sistema.",
+                        "La venta no certificada fue anulada correctamente. " +
+                        quickBooksMessage,
                     quickBooksId =
                         storedInvoice.QuickBooksId,
                     isCertified =

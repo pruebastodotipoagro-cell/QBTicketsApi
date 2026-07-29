@@ -2,13 +2,13 @@
 using Microsoft.Extensions.Caching.Memory;
 using QBTicketsApi.Database;
 using QBTicketsApi.DTOs;
-using QBTicketsApi.DTOs.QBTicketsApi.DTOs;
 using QBTicketsApi.Models;
 using System.Net.Http.Headers;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Nodes;
 
 namespace QBTicketsApi.Services
 {
@@ -688,6 +688,488 @@ namespace QBTicketsApi.Services
                 : value;
         }
 
+        public async Task<(DashboardSyncResponse Result, string DocumentJson)>
+            SynchronizeDashboardDocumentAsync(
+                string quickBooksId,
+                string priceType,
+                decimal creditPercentage,
+                IReadOnlyCollection<ItemDiscountRequest>? discounts)
+        {
+            quickBooksId = (quickBooksId ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(quickBooksId))
+                throw new Exception("El ID de QuickBooks es obligatorio.");
+
+            priceType = NormalizeDashboardPriceType(priceType);
+            creditPercentage = priceType == "credito" ? 3m : 0m;
+            discounts ??= Array.Empty<ItemDiscountRequest>();
+
+            Invoice? stored = await _db.Invoices
+                .Include(x => x.Lines)
+                .Where(x => x.QuickBooksId == quickBooksId)
+                .OrderByDescending(x => x.CreatedAt)
+                .FirstOrDefaultAsync();
+
+            if (stored != null && stored.IsCancelled)
+                throw new Exception("La factura está anulada.");
+
+            /*
+             * No confiamos únicamente en el total guardado localmente.
+             * Siempre consultamos y, cuando corresponda, actualizamos
+             * QuickBooks. Esto evita que el Dashboard muestre un total
+             * distinto al que realmente tiene la factura en QuickBooks.
+             */
+
+            if (stored != null && stored.IsCertified)
+            {
+                bool samePrice =
+                    string.Equals(
+                        stored.PriceType,
+                        priceType,
+                        StringComparison.OrdinalIgnoreCase
+                    );
+
+                decimal requestedDiscount =
+                    Math.Round(
+                        discounts.Sum(
+                            x => x?.Amount ?? 0m
+                        ),
+                        2,
+                        MidpointRounding.AwayFromZero
+                    );
+
+                bool sameDiscount =
+                    Math.Abs(
+                        stored.DiscountTotal -
+                        requestedDiscount
+                    ) <= 0.009m;
+
+                if (!samePrice || !sameDiscount)
+                {
+                    throw new Exception(
+                        "Una factura certificada no puede cambiar precios ni descuentos."
+                    );
+                }
+
+                string existingJson =
+                    await GetDashboardDocumentJsonAsync(
+                        quickBooksId
+                    );
+
+                return (
+                    new DashboardSyncResponse
+                    {
+                        Success = true,
+                        Message =
+                            "La factura está certificada. Se conservaron sus valores.",
+                        QuickBooksId =
+                            quickBooksId,
+                        Subtotal =
+                            stored.Subtotal,
+                        DiscountTotal =
+                            stored.DiscountTotal,
+                        Total =
+                            stored.Total,
+                        PriceType =
+                            stored.PriceType,
+                        WasAlreadySynchronized =
+                            true
+                    },
+                    existingJson
+                );
+            }
+
+            string currentJson = await GetDashboardDocumentJsonAsync(quickBooksId);
+            var parsed = ParseQueryDocument(currentJson);
+            JsonObject qbDocument = parsed.Document;
+            string entityName = parsed.EntityName;
+
+            var discountMap = discounts
+                .Where(x => x != null && !string.IsNullOrWhiteSpace(x.LineId))
+                .GroupBy(x => x.LineId.Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => Math.Round(g.Sum(x => x.Amount), 2), StringComparer.OrdinalIgnoreCase);
+
+            var oldLines = stored?.Lines?.Where(x => !string.IsNullOrWhiteSpace(x.QuickBooksLineId))
+                .ToDictionary(x => x.QuickBooksLineId, StringComparer.OrdinalIgnoreCase)
+                ?? new Dictionary<string, InvoiceLine>(StringComparer.OrdinalIgnoreCase);
+
+            var savedLines = new List<InvoiceLine>();
+            decimal subtotal = 0m, discountTotal = 0m, finalTotal = 0m;
+            JsonArray lines = qbDocument["Line"] as JsonArray ?? new JsonArray();
+
+            foreach (JsonNode? node in lines)
+            {
+                if (node is not JsonObject line) continue;
+                if (!string.Equals(line["DetailType"]?.GetValue<string>(), "SalesItemLineDetail", StringComparison.OrdinalIgnoreCase)) continue;
+                if (line["SalesItemLineDetail"] is not JsonObject detail) continue;
+
+                string lineId = line["Id"]?.ToString() ?? "";
+                decimal qty = ReadDecimal(detail["Qty"], 1m);
+                if (qty <= 0m) qty = 1m;
+                decimal currentUnit = ReadDecimal(detail["UnitPrice"], 0m);
+                decimal originalUnit = oldLines.TryGetValue(lineId, out InvoiceLine? old) && old.OriginalUnitPrice > 0m
+                    ? old.OriginalUnitPrice : currentUnit;
+                decimal appliedUnit = priceType == "credito"
+                    ? Math.Round(originalUnit * 1.03m, 2, MidpointRounding.AwayFromZero)
+                    : Math.Round(originalUnit, 2, MidpointRounding.AwayFromZero);
+                decimal lineSubtotal = Math.Round(appliedUnit * qty, 2, MidpointRounding.AwayFromZero);
+                decimal lineDiscount = discountMap.TryGetValue(lineId, out decimal d) ? d : 0m;
+                if (lineDiscount < 0m || lineDiscount > lineSubtotal)
+                    throw new Exception($"El descuento de la línea {lineId} no es válido.");
+                decimal lineTotal = lineSubtotal - lineDiscount;
+
+                detail["UnitPrice"] = appliedUnit;
+                detail["Qty"] = qty;
+                detail["DiscountAmt"] = lineDiscount;
+                line["Amount"] = lineTotal;
+
+                string itemId = detail["ItemRef"]?["value"]?.ToString() ?? "";
+                string description = detail["ItemRef"]?["name"]?.ToString() ?? line["Description"]?.ToString() ?? "Producto";
+                savedLines.Add(new InvoiceLine
+                {
+                    QuickBooksLineId = lineId,
+                    QuickBooksItemId = itemId,
+                    Description = description,
+                    Quantity = qty,
+                    OriginalUnitPrice = originalUnit,
+                    AppliedUnitPrice = appliedUnit,
+                    OriginalSubtotal = Math.Round(originalUnit * qty, 2, MidpointRounding.AwayFromZero),
+                    DiscountAmount = lineDiscount,
+                    FinalTotal = lineTotal,
+                    CreatedAt = DateTime.UtcNow
+                });
+                subtotal += lineSubtotal; discountTotal += lineDiscount; finalTotal += lineTotal;
+            }
+
+            if (savedLines.Count == 0) throw new Exception("El documento no contiene productos para actualizar.");
+
+            JsonObject updatePayload = new JsonObject
+            {
+                ["Id"] = qbDocument["Id"]?.DeepClone(),
+                ["SyncToken"] = qbDocument["SyncToken"]?.DeepClone(),
+                ["sparse"] = true,
+                ["Line"] = lines.DeepClone()
+            };
+
+            string updatedJson = await PostQuickBooksUpdateAsync(entityName, updatePayload);
+            string wrappedJson = WrapUpdatedDocument(updatedJson, entityName);
+
+            if (stored == null)
+            {
+                stored = new Invoice { QuickBooksId = quickBooksId, CreatedAt = DateTime.UtcNow };
+                _db.Invoices.Add(stored);
+            }
+            else if (stored.Lines.Count > 0)
+            {
+                _db.InvoiceLines.RemoveRange(stored.Lines);
+            }
+
+            stored.InvoiceNumber = qbDocument["DocNumber"]?.ToString() ?? quickBooksId;
+            stored.CustomerName = qbDocument["CustomerRef"]?["name"]?.ToString() ?? "Consumidor Final";
+            stored.CustomerNit = string.IsNullOrWhiteSpace(stored.CustomerNit) ? "CF" : stored.CustomerNit;
+            stored.IssueDate = DateTime.TryParse(qbDocument["TxnDate"]?.ToString(), out DateTime issue) ? issue : DateTime.UtcNow;
+            stored.Subtotal = subtotal; stored.DiscountTotal = discountTotal; stored.Total = finalTotal;
+            stored.SaleType = entityName == "Invoice" ? "credito" : "contado";
+            stored.PriceType = priceType; stored.CreditPercentage = creditPercentage;
+            stored.Status = "dashboard-synced"; stored.Lines = savedLines;
+            await _db.SaveChangesAsync();
+
+            _memoryCache.Remove("qb-sales-receipt|" + quickBooksId);
+            _memoryCache.Remove("qb-invoice|" + quickBooksId);
+
+            return (new DashboardSyncResponse
+            {
+                Success = true,
+                Message = "Precios y descuentos actualizados en QuickBooks.",
+                QuickBooksId = quickBooksId,
+                Subtotal = subtotal,
+                DiscountTotal = discountTotal,
+                Total = finalTotal,
+                PriceType = priceType,
+                WasAlreadySynchronized = false
+            }, wrappedJson);
+        }
+
+        public async Task<List<DashboardSyncResponse>> SynchronizeHistoricalDiscountsAsync()
+        {
+            List<Invoice> invoices = await _db.Invoices.Include(x => x.Lines)
+                .Where(x => !x.IsCancelled && x.DiscountTotal > 0m)
+                .OrderBy(x => x.IssueDate).ToListAsync();
+            var results = new List<DashboardSyncResponse>();
+            foreach (Invoice invoice in invoices)
+            {
+                var discounts = invoice.Lines.Where(x => x.DiscountAmount > 0m && !string.IsNullOrWhiteSpace(x.QuickBooksLineId))
+                    .Select(x => new ItemDiscountRequest { LineId = x.QuickBooksLineId, Amount = x.DiscountAmount }).ToList();
+                if (discounts.Count == 0) continue;
+                try
+                {
+                    var sync = await SynchronizeDashboardDocumentAsync(invoice.QuickBooksId, invoice.PriceType, invoice.CreditPercentage, discounts);
+                    results.Add(sync.Result);
+                }
+                catch (Exception ex)
+                {
+                    results.Add(new DashboardSyncResponse { Success = false, QuickBooksId = invoice.QuickBooksId, Message = ex.Message });
+                }
+            }
+            return results;
+        }
+
+        private async Task<string> GetDashboardDocumentJsonAsync(string id)
+        {
+            string json = await GetSalesReceiptById(id);
+            if (json.Contains("\\\"SalesReceipt\\\"", StringComparison.Ordinal)) return json;
+            json = await GetInvoiceById(id);
+            if (json.Contains("\\\"Invoice\\\"", StringComparison.Ordinal)) return json;
+            throw new Exception("No se encontró la venta en QuickBooks.");
+        }
+
+        private static (JsonObject Document, string EntityName) ParseQueryDocument(string json)
+        {
+            JsonNode root = JsonNode.Parse(json) ?? throw new Exception("QuickBooks devolvió JSON vacío.");
+            JsonObject query = root["QueryResponse"] as JsonObject ?? throw new Exception("Respuesta de QuickBooks inválida.");
+            foreach (string name in new[] { "SalesReceipt", "Invoice" })
+            {
+                if (query[name] is JsonArray array && array.Count > 0 && array[0] is JsonObject obj) return (obj, name);
+            }
+            throw new Exception("QuickBooks no devolvió SalesReceipt ni Invoice.");
+        }
+
+        private async Task<string> PostQuickBooksUpdateAsync(string entityName, JsonObject payload)
+        {
+            var connection = _db.QuickBooksConnections.FirstOrDefault() ?? throw new Exception("No hay conexión con QuickBooks.");
+            if (connection.AccessTokenExpiresAt <= DateTime.UtcNow.AddMinutes(5)) await RefreshToken();
+            connection = _db.QuickBooksConnections.First();
+            HttpClient client = _httpClientFactory.CreateClient();
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", connection.AccessToken);
+            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            string entity = entityName.Equals("Invoice", StringComparison.OrdinalIgnoreCase) ? "invoice" : "salesreceipt";
+            string url = $"https://quickbooks.api.intuit.com/v3/company/{connection.RealmId}/{entity}?operation=update&minorversion=75";
+            using var content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json");
+            HttpResponseMessage response = await client.PostAsync(url, content);
+            string text = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode) throw new Exception("QuickBooks no pudo actualizar la venta.\n" + text);
+            return text;
+        }
+
+        private static string WrapUpdatedDocument(string json, string entityName)
+        {
+            JsonNode root = JsonNode.Parse(json) ?? throw new Exception("Respuesta de actualización vacía.");
+            JsonNode? entity = root[entityName];
+            if (entity == null) return json;
+            var wrapper = new JsonObject { ["QueryResponse"] = new JsonObject { [entityName] = new JsonArray(entity.DeepClone()) } };
+            return wrapper.ToJsonString();
+        }
+
+        public async Task<string> CancelDocumentInQuickBooksAsync(
+            string quickBooksId)
+        {
+            quickBooksId =
+                (quickBooksId ?? "").Trim();
+
+            if (string.IsNullOrWhiteSpace(
+                quickBooksId))
+            {
+                throw new Exception(
+                    "El ID de QuickBooks es obligatorio para anular la venta."
+                );
+            }
+
+            /*
+             * Eliminamos cualquier copia en caché antes de consultar.
+             * Esto evita usar un SyncToken anterior.
+             */
+            _memoryCache.Remove(
+                "qb-sales-receipt|" + quickBooksId
+            );
+
+            _memoryCache.Remove(
+                "qb-invoice|" + quickBooksId
+            );
+
+            string json =
+                await GetSalesReceiptById(
+                    quickBooksId
+                );
+
+            string entityName =
+                "SalesReceipt";
+
+            if (!json.Contains(
+                    "\"SalesReceipt\"",
+                    StringComparison.Ordinal))
+            {
+                json =
+                    await GetInvoiceById(
+                        quickBooksId
+                    );
+
+                entityName =
+                    "Invoice";
+            }
+
+            if (!json.Contains(
+                    "\"" + entityName + "\"",
+                    StringComparison.Ordinal))
+            {
+                /*
+                 * Si ya no existe, consideramos que QuickBooks
+                 * ya quedó corregido. Esto permite reintentar una
+                 * anulación sin provocar otro error.
+                 */
+                InvalidateAllCachesAfterCancellation(
+                    quickBooksId
+                );
+
+                return
+                    "La venta ya no existe en QuickBooks.";
+            }
+
+            (JsonObject document, string parsedEntity) =
+                ParseQueryDocument(
+                    json
+                );
+
+            entityName =
+                parsedEntity;
+
+            string id =
+                document["Id"]?.ToString()
+                ?? quickBooksId;
+
+            string syncToken =
+                document["SyncToken"]?.ToString()
+                ?? "";
+
+            if (string.IsNullOrWhiteSpace(
+                syncToken))
+            {
+                throw new Exception(
+                    "QuickBooks no devolvió el SyncToken necesario para anular la venta."
+                );
+            }
+
+            QuickBooksConnection connection =
+                _db.QuickBooksConnections
+                    .FirstOrDefault()
+                ?? throw new Exception(
+                    "No hay conexión con QuickBooks."
+                );
+
+            if (connection.AccessTokenExpiresAt <=
+                DateTime.UtcNow.AddMinutes(5))
+            {
+                await RefreshToken();
+
+                connection =
+                    _db.QuickBooksConnections
+                        .First();
+            }
+
+            HttpClient client =
+                _httpClientFactory.CreateClient();
+
+            client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue(
+                    "Bearer",
+                    connection.AccessToken
+                );
+
+            client.DefaultRequestHeaders.Accept.Add(
+                new MediaTypeWithQualityHeaderValue(
+                    "application/json"
+                )
+            );
+
+            string entityPath =
+                entityName.Equals(
+                    "Invoice",
+                    StringComparison.OrdinalIgnoreCase
+                )
+                    ? "invoice"
+                    : "salesreceipt";
+
+            string url =
+                $"https://quickbooks.api.intuit.com/v3/company/{connection.RealmId}/{entityPath}?operation=delete&minorversion=75";
+
+            JsonObject payload =
+                new JsonObject
+                {
+                    ["Id"] = id,
+                    ["SyncToken"] = syncToken
+                };
+
+            using (
+                var content =
+                    new StringContent(
+                        payload.ToJsonString(),
+                        Encoding.UTF8,
+                        "application/json"
+                    )
+            )
+            {
+                HttpResponseMessage response =
+                    await client.PostAsync(
+                        url,
+                        content
+                    );
+
+                string responseText =
+                    await response.Content
+                        .ReadAsStringAsync();
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    throw new Exception(
+                        "QuickBooks no pudo anular la venta.\n" +
+                        responseText
+                    );
+                }
+            }
+
+            InvalidateAllCachesAfterCancellation(
+                quickBooksId
+            );
+
+            return
+                "La venta fue eliminada de QuickBooks correctamente.";
+        }
+
+        private void InvalidateAllCachesAfterCancellation(
+            string quickBooksId)
+        {
+            _memoryCache.Remove(
+                "qb-sales-receipt|" + quickBooksId
+            );
+
+            _memoryCache.Remove(
+                "qb-invoice|" + quickBooksId
+            );
+
+            /*
+             * Los reportes usan claves por rango de fechas.
+             * Compactar la caché garantiza que el corte, ventas,
+             * productos y demás reportes se recalculen inmediatamente.
+             */
+            if (_memoryCache is MemoryCache memoryCache)
+            {
+                memoryCache.Compact(
+                    1.0
+                );
+            }
+        }
+
+        private static string NormalizeDashboardPriceType(string? value)
+        {
+            string result = (value ?? "contado").Trim().ToLowerInvariant().Replace("é", "e").Replace("í", "i");
+            if (result != "contado" && result != "credito") throw new Exception("El tipo de precio debe ser contado o crédito.");
+            return result;
+        }
+
+        private static decimal ReadDecimal(JsonNode? node, decimal fallback)
+        {
+            if (node == null) return fallback;
+            return decimal.TryParse(node.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out decimal value) ? value : fallback;
+        }
+
         private async Task RefreshToken()
         {
             var connection = _db.QuickBooksConnections.FirstOrDefault();
@@ -846,6 +1328,24 @@ namespace QBTicketsApi.Services
 
                 string cashierName =
                     GetCashierFromTransactionJson(inv);
+
+                // Solo las facturas identificadas con un cajero llegan al Dashboard.
+                // Las facturas administrativas (por ejemplo, las creadas por Celeste)
+                // quedan en QuickBooks, pero no aparecen en Clientes / Crédito.
+                string privateNote =
+                    inv.TryGetProperty("PrivateNote", out var privateNoteElement)
+                        ? privateNoteElement.GetString() ?? ""
+                        : "";
+
+                bool administrativeInvoice =
+                    string.IsNullOrWhiteSpace(cashierName) ||
+                    cashierName.Contains("CELESTE", StringComparison.OrdinalIgnoreCase) ||
+                    privateNote.Contains("NO CAJA", StringComparison.OrdinalIgnoreCase);
+
+                if (administrativeInvoice)
+                {
+                    continue;
+                }
 
                 string customerName =
                     "Consumidor Final";

@@ -156,6 +156,14 @@ namespace QBTicketsApi.Controllers
                         storedInvoice
                     );
 
+                if (storedInvoice == null || !storedInvoice.IsCertified)
+                {
+                    var sync = await _quickBooksService.SynchronizeDashboardDocumentAsync(
+                        id, finalPriceType, finalCreditPercentage, discounts);
+                    json = sync.DocumentJson;
+                    storedInvoice = await ObtenerFacturaGuardadaAsync(id);
+                }
+
                 if (certifyFel)
                 {
                     string? fiscalError =
@@ -397,6 +405,14 @@ namespace QBTicketsApi.Controllers
                         request.CreditPercentage,
                         storedInvoice
                     );
+
+                if (!alreadyCertified)
+                {
+                    var sync = await _quickBooksService.SynchronizeDashboardDocumentAsync(
+                        id, finalPriceType, finalCreditPercentage, discounts);
+                    json = sync.DocumentJson;
+                    storedInvoice = await ObtenerFacturaGuardadaAsync(id);
+                }
 
                 if (request.CertifyFel)
                 {

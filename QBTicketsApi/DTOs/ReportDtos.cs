@@ -1,7 +1,5 @@
 ﻿namespace QBTicketsApi.DTOs
 {
-    namespace QBTicketsApi.DTOs
-    {
         public class SalesReportResponseDto
         {
             public List<SalesReportRowDto> Sales { get; set; }
@@ -165,5 +163,4 @@
             public decimal PurchaseCost { get; set; }
             public decimal UnitPrice { get; set; }
         }
-    }
 }

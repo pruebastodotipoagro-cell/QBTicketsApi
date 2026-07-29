@@ -2,7 +2,6 @@
 using Microsoft.Extensions.Caching.Memory;
 using QBTicketsApi.Database;
 using QBTicketsApi.DTOs;
-using QBTicketsApi.DTOs.QBTicketsApi.DTOs;
 using QBTicketsApi.Models;
 using System.Text.Json;
 
@@ -127,6 +126,15 @@ namespace QBTicketsApi.Services
                     !string.IsNullOrWhiteSpace(
                         stored.FelAuthorizationNumber
                     );
+
+                /*
+                 * Las ventas anuladas no deben aparecer en Venta general.
+                 * Se conservan en la base de datos únicamente como auditoría.
+                 */
+                if (isCancelled)
+                {
+                    continue;
+                }
 
                 string paymentMethod =
                     sale.SaleType.Equals(
@@ -693,32 +701,45 @@ namespace QBTicketsApi.Services
                     .Distinct()
                     .ToList();
 
-            HashSet<string> cancelledIds =
-                (
-                    await _db.Invoices
-                        .AsNoTracking()
-                        .Where(x =>
-                            receiptIds.Contains(
-                                x.QuickBooksId
-                            ) &&
-                            x.IsCancelled
-                        )
-                        .Select(x =>
+            List<Invoice> storedCashierInvoices =
+                await _db.Invoices
+                    .AsNoTracking()
+                    .Where(x =>
+                        receiptIds.Contains(
                             x.QuickBooksId
                         )
-                        .ToListAsync()
-                )
-                .ToHashSet(
-                    StringComparer.OrdinalIgnoreCase
-                );
+                    )
+                    .ToListAsync();
+
+            Dictionary<string, Invoice>
+                storedCashierById =
+                    storedCashierInvoices
+                        .GroupBy(x =>
+                            x.QuickBooksId
+                        )
+                        .ToDictionary(
+                            group => group.Key,
+                            group => group
+                                .OrderByDescending(x =>
+                                    x.CreatedAt
+                                )
+                                .First(),
+                            StringComparer.OrdinalIgnoreCase
+                        );
 
             cashReceipts =
                 cashReceipts
-                    .Where(x =>
-                        !cancelledIds.Contains(
-                            x.QbInvoiceId
-                        )
-                    )
+                    .Where(sale =>
+                    {
+                        if (!storedCashierById.TryGetValue(
+                                sale.QbInvoiceId,
+                                out Invoice? storedSale))
+                        {
+                            return true;
+                        }
+
+                        return !storedSale.IsCancelled;
+                    })
                     .ToList();
 
             decimal cashSales = 0m;
@@ -738,26 +759,40 @@ namespace QBTicketsApi.Services
                             )
                     );
 
+                /*
+                 * El total guardado ya incluye el descuento aplicado
+                 * desde el Dashboard y sincronizado con QuickBooks.
+                 * Esto también corrige cortes de fechas anteriores.
+                 */
+                decimal saleTotal =
+                    storedCashierById.TryGetValue(
+                        sale.QbInvoiceId,
+                        out Invoice? storedSale
+                    ) &&
+                    storedSale.Total >= 0m
+                        ? storedSale.Total
+                        : sale.Total;
+
                 if (paymentMethod.Equals(
                     "Efectivo",
                     StringComparison.OrdinalIgnoreCase))
                 {
                     cashSales +=
-                        sale.Total;
+                        saleTotal;
                 }
                 else if (paymentMethod.Equals(
                     "Cheque",
                     StringComparison.OrdinalIgnoreCase))
                 {
                     checkSales +=
-                        sale.Total;
+                        saleTotal;
                 }
                 else if (paymentMethod.Equals(
                     "Tarjeta de crédito",
                     StringComparison.OrdinalIgnoreCase))
                 {
                     creditCardSales +=
-                        sale.Total;
+                        saleTotal;
                 }
             }
 

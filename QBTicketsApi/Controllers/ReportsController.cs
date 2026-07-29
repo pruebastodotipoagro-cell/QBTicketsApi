@@ -1,7 +1,6 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using QBTicketsApi.DTOs;
-using QBTicketsApi.DTOs.QBTicketsApi.DTOs;
 using QBTicketsApi.Services;
 
 namespace QBTicketsApi.Controllers
