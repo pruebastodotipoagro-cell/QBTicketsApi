@@ -2,6 +2,8 @@
 using Microsoft.AspNetCore.Mvc;
 using QBTicketsApi.DTOs;
 using QBTicketsApi.Services;
+using System.Globalization;
+using System.Text;
 
 namespace QBTicketsApi.Controllers
 {
@@ -15,12 +17,9 @@ namespace QBTicketsApi.Controllers
         public ReportsController(
             ReportsService reportsService)
         {
-            _reportsService =
-                reportsService;
+            _reportsService = reportsService;
         }
 
-        // Todos los usuarios autenticados pueden ver
-        // el reporte completo de ventas.
         [HttpGet("sales")]
         public async Task<IActionResult> GetSales(
             [FromQuery] string? desde = null,
@@ -35,6 +34,28 @@ namespace QBTicketsApi.Controllers
                             hasta
                         );
 
+                HashSet<string>? allowedCashiers =
+                    GetAllowedCashiersForCurrentUser();
+
+                if (allowedCashiers != null)
+                {
+                    result.Sales =
+                        result.Sales
+                            .Where(x =>
+                                allowedCashiers.Contains(
+                                    NormalizeName(
+                                        x.CashierName
+                                    )
+                                )
+                            )
+                            .ToList();
+
+                    result.Total =
+                        result.Sales.Sum(
+                            x => x.Total
+                        );
+                }
+
                 return Ok(result);
             }
             catch (Exception ex)
@@ -47,8 +68,6 @@ namespace QBTicketsApi.Controllers
             }
         }
 
-        // Todos los usuarios autenticados pueden abrir
-        // el detalle desde Reportes.
         [HttpGet("sales/{id}/detail")]
         public async Task<IActionResult> GetSaleDetail(
             string id)
@@ -59,6 +78,20 @@ namespace QBTicketsApi.Controllers
                     await _reportsService
                         .GetSaleDetailAsync(id);
 
+                if (!CurrentUserCanAccessCashier(
+                        result.CashierName))
+                {
+                    return StatusCode(
+                        StatusCodes.Status403Forbidden,
+                        new
+                        {
+                            success = false,
+                            error =
+                                "No tiene permiso para consultar ventas de la otra sucursal."
+                        }
+                    );
+                }
+
                 return Ok(result);
             }
             catch (Exception ex)
@@ -71,8 +104,6 @@ namespace QBTicketsApi.Controllers
             }
         }
 
-        // Todos los usuarios autenticados pueden reintentar
-        // una certificación pendiente desde Reportes.
         [HttpPost("sales/{id}/retry-certification")]
         public async Task<IActionResult> RetryCertification(
             string id,
@@ -80,6 +111,24 @@ namespace QBTicketsApi.Controllers
         {
             try
             {
+                SaleDetailDto detail =
+                    await _reportsService
+                        .GetSaleDetailAsync(id);
+
+                if (!CurrentUserCanAccessCashier(
+                        detail.CashierName))
+                {
+                    return StatusCode(
+                        StatusCodes.Status403Forbidden,
+                        new
+                        {
+                            success = false,
+                            error =
+                                "No tiene permiso para certificar ventas de la otra sucursal."
+                        }
+                    );
+                }
+
                 RetryCertificationResponseDto result =
                     await _reportsService
                         .RetryCertificationAsync(
@@ -104,8 +153,6 @@ namespace QBTicketsApi.Controllers
             }
         }
 
-        // El cajero utilizado es exactamente el seleccionado
-        // en el Native. Ya no se reemplaza por el usuario conectado.
         [HttpGet("cashier-cut")]
         public async Task<IActionResult> GetCashierCut(
             [FromQuery] string? cashierName,
@@ -128,6 +175,20 @@ namespace QBTicketsApi.Controllers
                 string finalCashierName =
                     cashierName.Trim();
 
+                if (!CurrentUserCanAccessCashier(
+                        finalCashierName))
+                {
+                    return StatusCode(
+                        StatusCodes.Status403Forbidden,
+                        new
+                        {
+                            success = false,
+                            error =
+                                "No tiene permiso para consultar el corte de un cajero de la otra sucursal."
+                        }
+                    );
+                }
+
                 CashierCutDto result =
                     await _reportsService
                         .GetCashierCutAsync(
@@ -148,8 +209,6 @@ namespace QBTicketsApi.Controllers
             }
         }
 
-        // Todos los usuarios autenticados pueden consultar
-        // el corte general.
         [HttpGet("general-cut")]
         public async Task<IActionResult> GetGeneralCut(
             [FromQuery] DateTime desde,
@@ -157,6 +216,19 @@ namespace QBTicketsApi.Controllers
         {
             try
             {
+                if (GetAllowedCashiersForCurrentUser() != null)
+                {
+                    return StatusCode(
+                        StatusCodes.Status403Forbidden,
+                        new
+                        {
+                            success = false,
+                            error =
+                                "El corte general completo está restringido por sucursal."
+                        }
+                    );
+                }
+
                 GeneralCutDto result =
                     await _reportsService
                         .GetGeneralCutAsync(
@@ -176,8 +248,6 @@ namespace QBTicketsApi.Controllers
             }
         }
 
-        // Todos los usuarios autenticados pueden consultar
-        // el reporte completo por producto.
         [HttpGet("products")]
         public async Task<IActionResult> GetProductsReport(
             [FromQuery] DateTime desde,
@@ -185,12 +255,15 @@ namespace QBTicketsApi.Controllers
         {
             try
             {
+                string? cashierName =
+                    GetSingleCashierForProductReport();
+
                 ProductSalesReportResponseDto result =
                     await _reportsService
                         .GetProductSalesReportAsync(
                             desde,
                             hasta,
-                            null
+                            cashierName
                         );
 
                 return Ok(result);
@@ -203,6 +276,154 @@ namespace QBTicketsApi.Controllers
                     error = ex.Message
                 });
             }
+        }
+
+        private bool CurrentUserCanAccessCashier(
+            string? documentCashier)
+        {
+            HashSet<string>? allowed =
+                GetAllowedCashiersForCurrentUser();
+
+            if (allowed == null)
+            {
+                return true;
+            }
+
+            return allowed.Contains(
+                NormalizeName(
+                    documentCashier
+                )
+            );
+        }
+
+        private HashSet<string>?
+            GetAllowedCashiersForCurrentUser()
+        {
+            string currentCashier =
+                NormalizeName(
+                    User.FindFirst(
+                        "cashierName"
+                    )?.Value
+                );
+
+            if (currentCashier ==
+                    "CARLOS LORENZANA" ||
+                currentCashier ==
+                    "PAOLA VALLADARES")
+            {
+                return new HashSet<string>(
+                    new[]
+                    {
+                        "CARLOS LORENZANA",
+                        "PAOLA VALLADARES"
+                    },
+                    StringComparer.OrdinalIgnoreCase
+                );
+            }
+
+            if (currentCashier ==
+                    "ROCIO RAMOS" ||
+                currentCashier ==
+                    "ADAN HERNANDEZ" ||
+                currentCashier ==
+                    "FERNANDO GOMEZ")
+            {
+                return new HashSet<string>(
+                    new[]
+                    {
+                        "ROCIO RAMOS",
+                        "ADAN HERNANDEZ",
+                        "FERNANDO GOMEZ"
+                    },
+                    StringComparer.OrdinalIgnoreCase
+                );
+            }
+
+            return null;
+        }
+
+        private string? GetSingleCashierForProductReport()
+        {
+            string currentCashier =
+                NormalizeName(
+                    User.FindFirst(
+                        "cashierName"
+                    )?.Value
+                );
+
+            if (currentCashier ==
+                    "CARLOS LORENZANA" ||
+                currentCashier ==
+                    "PAOLA VALLADARES" ||
+                currentCashier ==
+                    "ROCIO RAMOS" ||
+                currentCashier ==
+                    "ADAN HERNANDEZ" ||
+                currentCashier ==
+                    "FERNANDO GOMEZ")
+            {
+                return currentCashier;
+            }
+
+            return null;
+        }
+
+        private static string NormalizeName(
+            string? value)
+        {
+            string normalized =
+                (value ?? "")
+                    .Trim()
+                    .ToUpperInvariant()
+                    .Normalize(
+                        NormalizationForm.FormD
+                    );
+
+            var builder =
+                new StringBuilder();
+
+            foreach (char character in normalized)
+            {
+                UnicodeCategory category =
+                    CharUnicodeInfo.GetUnicodeCategory(
+                        character
+                    );
+
+                if (category !=
+                    UnicodeCategory.NonSpacingMark)
+                {
+                    builder.Append(character);
+                }
+            }
+
+            string clean =
+                builder
+                    .ToString()
+                    .Normalize(
+                        NormalizationForm.FormC
+                    )
+                    .Replace(".", " ")
+                    .Replace(",", " ")
+                    .Replace("-", " ")
+                    .Replace("  ", " ")
+                    .Trim();
+
+            if (clean == "ROCIO")
+                return "ROCIO RAMOS";
+
+            if (clean == "ADAN")
+                return "ADAN HERNANDEZ";
+
+            if (clean == "FERNANDO")
+                return "FERNANDO GOMEZ";
+
+            if (clean == "CARLOS")
+                return "CARLOS LORENZANA";
+
+            if (clean == "PAOLA")
+                return "PAOLA VALLADARES";
+
+            return clean;
         }
     }
 }
