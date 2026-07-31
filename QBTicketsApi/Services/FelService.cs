@@ -793,10 +793,12 @@ namespace QBTicketsApi.Services
                 );
             }
 
+            /*
+             * QuickBooks ya contiene el precio seleccionado por el
+             * Dashboard. No se vuelve a aplicar el 3 % al certificar.
+             */
             decimal priceFactor =
-                priceType == "credito"
-                    ? 1m + (creditPercentage / 100m)
-                    : 1m;
+                1m;
 
             Dictionary<string, decimal>
                 descuentosPorLinea =
@@ -1200,14 +1202,12 @@ namespace QBTicketsApi.Services
                     "TotalAmt"
                 );
 
-            decimal priceFactor =
-                priceType == "credito"
-                    ? 1m + (creditPercentage / 100m)
-                    : 1m;
-
+            /*
+             * El total de QuickBooks ya refleja el tipo de precio.
+             */
             decimal totalOriginal =
                 Math.Round(
-                    quickBooksTotal * priceFactor,
+                    quickBooksTotal,
                     2,
                     MidpointRounding.AwayFromZero
                 );

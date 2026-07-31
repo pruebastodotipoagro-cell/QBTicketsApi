@@ -118,11 +118,12 @@ namespace QBTicketsApi.Services
             var discountMap =
                 CrearMapaDescuentos(discounts);
 
+            /*
+             * El JSON ya contiene el precio contado o crédito que quedó
+             * guardado en QuickBooks. No se aplica nuevamente el 3 %.
+             */
             decimal priceFactor =
-                ObtenerFactorPrecio(
-                    priceType,
-                    creditPercentage
-                );
+                1m;
 
             var ticketLines =
                 ObtenerLineasTicket(
@@ -660,11 +661,12 @@ namespace QBTicketsApi.Services
             var discountMap =
                 CrearMapaDescuentos(discounts);
 
+            /*
+             * El JSON ya contiene el precio contado o crédito que quedó
+             * guardado en QuickBooks. No se aplica nuevamente el 3 %.
+             */
             decimal priceFactor =
-                ObtenerFactorPrecio(
-                    priceType,
-                    creditPercentage
-                );
+                1m;
 
             var ticketLines =
                 ObtenerLineasTicket(

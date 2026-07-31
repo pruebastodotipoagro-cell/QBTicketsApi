@@ -820,7 +820,7 @@ namespace QBTicketsApi.Services
                 detail["UnitPrice"] = appliedUnit;
                 detail["Qty"] = qty;
                 detail["DiscountAmt"] = lineDiscount;
-                line["Amount"] = lineTotal;
+                line["Amount"] = lineSubtotal;
 
                 string itemId = detail["ItemRef"]?["value"]?.ToString() ?? "";
                 string description = detail["ItemRef"]?["name"]?.ToString() ?? line["Description"]?.ToString() ?? "Producto";
@@ -866,7 +866,21 @@ namespace QBTicketsApi.Services
             stored.InvoiceNumber = qbDocument["DocNumber"]?.ToString() ?? quickBooksId;
             stored.CustomerName = qbDocument["CustomerRef"]?["name"]?.ToString() ?? "Consumidor Final";
             stored.CustomerNit = string.IsNullOrWhiteSpace(stored.CustomerNit) ? "CF" : stored.CustomerNit;
-            stored.IssueDate = DateTime.TryParse(qbDocument["TxnDate"]?.ToString(), out DateTime issue) ? issue : DateTime.UtcNow;
+            if (DateTime.TryParse(
+                    qbDocument["TxnDate"]?.ToString(),
+                    out DateTime issue))
+            {
+                stored.IssueDate =
+                    DateTime.SpecifyKind(
+                        issue,
+                        DateTimeKind.Utc
+                    );
+            }
+            else
+            {
+                stored.IssueDate =
+                    DateTime.UtcNow;
+            }
             stored.Subtotal = subtotal; stored.DiscountTotal = discountTotal; stored.Total = finalTotal;
             stored.SaleType = entityName == "Invoice" ? "credito" : "contado";
             stored.PriceType = priceType; stored.CreditPercentage = creditPercentage;

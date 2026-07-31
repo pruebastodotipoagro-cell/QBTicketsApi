@@ -636,6 +636,7 @@ namespace QBTicketsApi.Controllers
             Invoice? storedInvoice)
         {
             if (storedInvoice != null &&
+                storedInvoice.IsCertified &&
                 !string.IsNullOrWhiteSpace(
                     storedInvoice.PriceType))
             {

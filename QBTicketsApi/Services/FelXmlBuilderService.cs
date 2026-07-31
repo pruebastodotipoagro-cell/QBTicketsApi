@@ -35,9 +35,11 @@ namespace QBTicketsApi.Services
 
             string normalizedPriceType = NormalizarTipoPrecio(priceType);
             decimal normalizedCreditPercentage = NormalizarPorcentajeCredito(normalizedPriceType, creditPercentage);
-            decimal priceFactor = normalizedPriceType == "credito"
-                ? 1m + (normalizedCreditPercentage / 100m)
-                : 1m;
+            /*
+             * Los precios ya fueron sincronizados en QuickBooks antes
+             * de construir el XML. No se vuelve a aplicar el 3 % aquí.
+             */
+            decimal priceFactor = 1m;
 
             string date = GetString(qbDoc, "TxnDate", DateTime.Now.ToString("yyyy-MM-dd"));
             Dictionary<string, decimal> discountMap = CrearMapaDescuentos(discounts);
