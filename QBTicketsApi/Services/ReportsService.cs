@@ -870,7 +870,8 @@ namespace QBTicketsApi.Services
 
         public async Task<GeneralCutDto> GetGeneralCutAsync(
             DateTime startDate,
-            DateTime endDate)
+            DateTime endDate,
+            IReadOnlyCollection<string>? allowedCashiers = null)
         {
             DateTime finalStartDate =
                 startDate.Date;
@@ -907,12 +908,43 @@ namespace QBTicketsApi.Services
                     DateTimeKind.Utc
                 );
 
+            HashSet<string>? allowedCashierKeys =
+                allowedCashiers == null
+                    ? null
+                    : allowedCashiers
+                        .Where(x =>
+                            !string.IsNullOrWhiteSpace(x)
+                        )
+                        .Select(x =>
+                            x.Trim()
+                        )
+                        .ToHashSet(
+                            StringComparer.OrdinalIgnoreCase
+                        );
+
             List<InvoiceResponseDto> cashReceipts =
                 await _quickBooksService
                     .GetSalesReceiptsList(
                         startText,
                         endText
                     );
+
+            /*
+             * Cada sucursal suma únicamente las ventas de sus cajeros.
+             * Tiucal: Rocío, Adán y Fernando.
+             * Atescatempa: Carlos y Paola.
+             */
+            if (allowedCashierKeys != null)
+            {
+                cashReceipts =
+                    cashReceipts
+                        .Where(x =>
+                            allowedCashierKeys.Contains(
+                                (x.CashierName ?? "").Trim()
+                            )
+                        )
+                        .ToList();
+            }
 
             List<string> generalReceiptIds =
                 cashReceipts
@@ -1008,14 +1040,27 @@ namespace QBTicketsApi.Services
                 }
             }
 
-            decimal totalExpenses =
-                await _db.CashMovements
+            IQueryable<CashMovement> expensesQuery =
+                _db.CashMovements
                     .AsNoTracking()
                     .Where(x =>
                         x.MovementType == "EXPENSE" &&
                         x.MovementDate >= startUtc &&
                         x.MovementDate < endUtc
-                    )
+                    );
+
+            if (allowedCashierKeys != null)
+            {
+                expensesQuery =
+                    expensesQuery.Where(x =>
+                        allowedCashierKeys.Contains(
+                            x.CashierName
+                        )
+                    );
+            }
+
+            decimal totalExpenses =
+                await expensesQuery
                     .SumAsync(x => x.Amount);
 
             List<CreditPaymentDto> payments =
@@ -1024,6 +1069,18 @@ namespace QBTicketsApi.Services
                         startText,
                         endText
                     );
+
+            if (allowedCashierKeys != null)
+            {
+                payments =
+                    payments
+                        .Where(x =>
+                            allowedCashierKeys.Contains(
+                                (x.CashierName ?? "").Trim()
+                            )
+                        )
+                        .ToList();
+            }
 
             decimal creditPayments =
                 payments.Sum(x =>

@@ -216,24 +216,15 @@ namespace QBTicketsApi.Controllers
         {
             try
             {
-                if (GetAllowedCashiersForCurrentUser() != null)
-                {
-                    return StatusCode(
-                        StatusCodes.Status403Forbidden,
-                        new
-                        {
-                            success = false,
-                            error =
-                                "El corte general completo está restringido por sucursal."
-                        }
-                    );
-                }
+                HashSet<string>? allowedCashiers =
+                    GetAllowedCashiersForCurrentUser();
 
                 GeneralCutDto result =
                     await _reportsService
                         .GetGeneralCutAsync(
                             desde,
-                            hasta
+                            hasta,
+                            allowedCashiers
                         );
 
                 return Ok(result);

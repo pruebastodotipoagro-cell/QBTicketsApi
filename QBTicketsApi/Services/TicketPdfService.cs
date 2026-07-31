@@ -156,15 +156,17 @@ namespace QBTicketsApi.Services
                 "Logo INNOVACIONES.jpeg"
             );
 
-            float pageHeight = 260;
-
             return Document.Create(container =>
             {
                 container.Page(page =>
                 {
-                    page.Size(
+                    /*
+                     * Papel continuo de 80 mm.
+                     * La altura termina exactamente donde termina el contenido,
+                     * evitando la franja blanca larga en la vista previa.
+                     */
+                    page.ContinuousSize(
                         80,
-                        pageHeight,
                         Unit.Millimetre
                     );
 
@@ -686,15 +688,15 @@ namespace QBTicketsApi.Services
                 "Logo INNOVACIONES.jpeg"
             );
 
-            float pageHeight = 190;
-
             return Document.Create(container =>
             {
                 container.Page(page =>
                 {
-                    page.Size(
+                    /*
+                     * También el recibo no certificado usa papel continuo.
+                     */
+                    page.ContinuousSize(
                         80,
-                        pageHeight,
                         Unit.Millimetre
                     );
 

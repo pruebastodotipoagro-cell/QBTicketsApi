@@ -913,13 +913,61 @@ namespace QBTicketsApi.Services
             return results;
         }
 
-        private async Task<string> GetDashboardDocumentJsonAsync(string id)
+        private async Task<string> GetDashboardDocumentJsonAsync(
+            string id)
         {
-            string json = await GetSalesReceiptById(id);
-            if (json.Contains("\\\"SalesReceipt\\\"", StringComparison.Ordinal)) return json;
-            json = await GetInvoiceById(id);
-            if (json.Contains("\\\"Invoice\\\"", StringComparison.Ordinal)) return json;
-            throw new Exception("No se encontró la venta en QuickBooks.");
+            string salesReceiptJson =
+                await GetSalesReceiptById(id);
+
+            if (ContainsQuickBooksEntity(
+                salesReceiptJson,
+                "SalesReceipt"))
+            {
+                return salesReceiptJson;
+            }
+
+            string invoiceJson =
+                await GetInvoiceById(id);
+
+            if (ContainsQuickBooksEntity(
+                invoiceJson,
+                "Invoice"))
+            {
+                return invoiceJson;
+            }
+
+            throw new Exception(
+                "No se encontró la venta en QuickBooks con el ID " +
+                id +
+                "."
+            );
+        }
+
+        private static bool ContainsQuickBooksEntity(
+            string json,
+            string entityName)
+        {
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return false;
+            }
+
+            try
+            {
+                JsonNode? root =
+                    JsonNode.Parse(json);
+
+                JsonArray? documents =
+                    root?["QueryResponse"]?[entityName]
+                    as JsonArray;
+
+                return documents != null &&
+                    documents.Count > 0;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static (JsonObject Document, string EntityName) ParseQueryDocument(string json)
