@@ -76,9 +76,10 @@ builder.Services.AddHttpClient();
 builder.Services.AddMemoryCache();
 
 builder.Services.AddScoped<QuickBooksService>();
-builder.Services.AddHostedService<
-    QuickBooksTokenRefreshWorker
->();
+
+// builder.Services.AddHostedService<
+//     QuickBooksTokenRefreshWorker
+// );
 
 QuestPDF.Settings.License =
     LicenseType.Community;
@@ -110,5 +111,11 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.Migrate();
+}
 
 app.Run();
