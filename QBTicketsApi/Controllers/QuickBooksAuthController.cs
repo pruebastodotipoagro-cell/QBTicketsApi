@@ -43,6 +43,30 @@ namespace QBTicketsApi.Controllers
             return Redirect(url);
         }
 
+
+        [HttpGet("config-check")]
+        public IActionResult ConfigCheck()
+        {
+            string clientId =
+                (_config["QuickBooks:ClientId"] ?? "").Trim();
+
+            string redirectUri =
+                (_config["QuickBooks:RedirectUri"] ?? "").Trim();
+
+            return Ok(new
+            {
+                clientIdPresent =
+                    !string.IsNullOrWhiteSpace(clientId),
+
+                clientIdLength =
+                    clientId.Length,
+
+                redirectUri =
+                    redirectUri
+            });
+        }
+
+
         [HttpGet("callback")]
         public async Task<IActionResult> Callback([FromQuery] string code, [FromQuery] string realmId, [FromQuery] string state)
         {
