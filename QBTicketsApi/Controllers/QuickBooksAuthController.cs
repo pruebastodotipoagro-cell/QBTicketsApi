@@ -5,6 +5,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.WebUtilities;
 
 namespace QBTicketsApi.Controllers
 {
@@ -26,21 +27,57 @@ namespace QBTicketsApi.Controllers
         [HttpGet("quickbooks")]
         public IActionResult ConnectQuickBooks()
         {
-            string clientId = (_config["QuickBooks:ClientId"] ?? "").Trim();
-            string redirectUri = (_config["QuickBooks:RedirectUri"] ?? "").Trim();
+            string clientId =
+                (_config["QuickBooks:ClientId"] ?? "").Trim();
 
-            string scope = "com.intuit.quickbooks.accounting";
-            string state = Guid.NewGuid().ToString("N");
+            string redirectUri =
+                (_config["QuickBooks:RedirectUri"] ?? "").Trim();
 
-            string url =
-                "https://appcenter.intuit.com/connect/oauth2" +
-                $"?client_id={Uri.EscapeDataString(clientId)}" +
-                $"&redirect_uri={Uri.EscapeDataString(redirectUri)}" +
-                "&response_type=code" +
-                $"&scope={Uri.EscapeDataString(scope)}" +
-                $"&state={Uri.EscapeDataString(state)}";
+            if (string.IsNullOrWhiteSpace(clientId))
+            {
+                return BadRequest(
+                    "QuickBooks ClientId está vacío."
+                );
+            }
 
-            return Redirect(url);
+            if (string.IsNullOrWhiteSpace(redirectUri))
+            {
+                return BadRequest(
+                    "QuickBooks RedirectUri está vacío."
+                );
+            }
+
+            string state =
+                Guid.NewGuid().ToString("N");
+
+            var parameters =
+                new Dictionary<string, string?>
+                {
+                    ["client_id"] =
+                        clientId,
+
+                    ["response_type"] =
+                        "code",
+
+                    ["scope"] =
+                        "com.intuit.quickbooks.accounting",
+
+                    ["redirect_uri"] =
+                        redirectUri,
+
+                    ["state"] =
+                        state
+                };
+
+            string authorizationUrl =
+                QueryHelpers.AddQueryString(
+                    "https://appcenter.intuit.com/connect/oauth2",
+                    parameters
+                );
+
+            return Redirect(
+                authorizationUrl
+            );
         }
 
 
