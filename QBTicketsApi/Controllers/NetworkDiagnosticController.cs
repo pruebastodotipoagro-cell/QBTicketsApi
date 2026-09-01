@@ -295,5 +295,122 @@ namespace QBTicketsApi.Controllers
                     enhancedQueryResult
             });
         }
+
+        [HttpPost("refresh-token")]
+        public async Task<IActionResult> RefreshToken()
+        {
+            var connection =
+                await _db.QuickBooksConnections
+                    .FirstOrDefaultAsync();
+
+            if (connection == null)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "No existe conexión de QuickBooks."
+                });
+            }
+
+            string clientId =
+                (HttpContext.RequestServices
+                    .GetRequiredService<IConfiguration>()
+                    ["QuickBooks:ClientId"] ?? "")
+                    .Trim();
+
+            string clientSecret =
+                (HttpContext.RequestServices
+                    .GetRequiredService<IConfiguration>()
+                    ["QuickBooks:ClientSecret"] ?? "")
+                    .Trim();
+
+            if (string.IsNullOrWhiteSpace(clientId) ||
+                string.IsNullOrWhiteSpace(clientSecret))
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Falta ClientId o ClientSecret."
+                });
+            }
+
+            using var client =
+                new HttpClient
+                {
+                    Timeout =
+                        TimeSpan.FromSeconds(20)
+                };
+
+            string basicAuth =
+                Convert.ToBase64String(
+                    System.Text.Encoding.UTF8.GetBytes(
+                        $"{clientId}:{clientSecret}"
+                    )
+                );
+
+            client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue(
+                    "Basic",
+                    basicAuth
+                );
+
+            var form =
+                new Dictionary<string, string>
+                {
+            {
+                "grant_type",
+                "refresh_token"
+            },
+            {
+                "refresh_token",
+                connection.RefreshToken
+            }
+                };
+
+            try
+            {
+                using var response =
+                    await client.PostAsync(
+                        "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer",
+                        new FormUrlEncodedContent(form)
+                    );
+
+                string json =
+                    await response.Content
+                        .ReadAsStringAsync();
+
+                return Ok(new
+                {
+                    success =
+                        response.IsSuccessStatusCode,
+
+                    httpStatus =
+                        (int)response.StatusCode,
+
+                    status =
+                        response.StatusCode.ToString(),
+
+                    response =
+                        json.Substring(
+                            0,
+                            Math.Min(
+                                json.Length,
+                                500
+                            )
+                        )
+                });
+            }
+            catch (Exception ex)
+            {
+                return Ok(new
+                {
+                    success = false,
+                    error =
+                        ex.GetType().Name,
+                    message =
+                        ex.Message
+                });
+            }
+        }
     }
 }
