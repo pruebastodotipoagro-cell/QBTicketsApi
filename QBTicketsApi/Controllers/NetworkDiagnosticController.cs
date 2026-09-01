@@ -34,6 +34,77 @@ namespace QBTicketsApi.Controllers
                 });
             }
 
+            string noAuthResult;
+            string companyResult;
+            string simpleQueryResult;
+            string enhancedQueryResult;
+
+            // 1. Prueba al endpoint de QuickBooks SIN token
+            try
+            {
+                using var handlerNoAuth =
+                    new SocketsHttpHandler
+                    {
+                        ConnectTimeout =
+                            TimeSpan.FromSeconds(10)
+                    };
+
+                using var clientNoAuth =
+                    new HttpClient(handlerNoAuth)
+                    {
+                        Timeout =
+                            TimeSpan.FromSeconds(15)
+                    };
+
+                clientNoAuth.DefaultRequestHeaders.Accept.Add(
+                    new MediaTypeWithQualityHeaderValue(
+                        "application/json"
+                    )
+                );
+
+                string url =
+                    $"https://quickbooks.api.intuit.com/" +
+                    $"v3/company/{connection.RealmId}/" +
+                    $"companyinfo/{connection.RealmId}";
+
+                var sw =
+                    Stopwatch.StartNew();
+
+                using var response =
+                    await clientNoAuth.GetAsync(url);
+
+                sw.Stop();
+
+                string body =
+                    await response.Content
+                        .ReadAsStringAsync();
+
+                noAuthResult =
+                    $"HTTP {(int)response.StatusCode} " +
+                    $"{response.StatusCode} " +
+                    $"{sw.ElapsedMilliseconds}ms";
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    noAuthResult +=
+                        " | " +
+                        body.Substring(
+                            0,
+                            Math.Min(
+                                body.Length,
+                                300
+                            )
+                        );
+                }
+            }
+            catch (Exception ex)
+            {
+                noAuthResult =
+                    $"ERROR {ex.GetType().Name}: " +
+                    ex.Message;
+            }
+
+            // Cliente autenticado con el token real
             using var handler =
                 new SocketsHttpHandler
                 {
@@ -60,11 +131,7 @@ namespace QBTicketsApi.Controllers
                 )
             );
 
-            string companyResult;
-            string simpleQueryResult;
-            string enhancedQueryResult;
-
-            // 1. Prueba autenticada simple
+            // 2. Prueba autenticada simple
             try
             {
                 string url =
@@ -109,7 +176,7 @@ namespace QBTicketsApi.Controllers
                     ex.Message;
             }
 
-            // 2. Query mínima
+            // 3. Query mínima
             try
             {
                 string query =
@@ -159,7 +226,7 @@ namespace QBTicketsApi.Controllers
                     ex.Message;
             }
 
-            // 3. Misma query + enhancedAllCustomFields
+            // 4. Misma query + enhancedAllCustomFields
             try
             {
                 string query =
@@ -214,6 +281,9 @@ namespace QBTicketsApi.Controllers
             {
                 tokenExpiresAt =
                     connection.AccessTokenExpiresAt,
+
+                companyInfoWithoutAuthorization =
+                    noAuthResult,
 
                 companyInfo =
                     companyResult,
