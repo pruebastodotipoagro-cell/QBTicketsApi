@@ -78,6 +78,62 @@ namespace QBTicketsApi.Services
                 );
         }
 
+        private static async Task<HttpResponseMessage>
+    GetQuickBooksWithRetryAsync(
+        HttpClient client,
+        string url)
+        {
+            Exception? lastError = null;
+
+            for (int attempt = 1; attempt <= 2; attempt++)
+            {
+                try
+                {
+                    using var timeout =
+                        new CancellationTokenSource(
+                            TimeSpan.FromSeconds(30)
+                        );
+
+                    HttpResponseMessage response =
+                        await client.GetAsync(
+                            url,
+                            HttpCompletionOption.ResponseHeadersRead,
+                            timeout.Token
+                        );
+
+                    return response;
+                }
+                catch (OperationCanceledException ex)
+                {
+                    lastError = ex;
+
+                    Console.WriteLine(
+                        $"QuickBooks timeout. Intento {attempt}/2."
+                    );
+                }
+                catch (HttpRequestException ex)
+                {
+                    lastError = ex;
+
+                    Console.WriteLine(
+                        $"QuickBooks error HTTP. Intento {attempt}/2: " +
+                        ex.Message
+                    );
+                }
+
+                if (attempt < 2)
+                {
+                    await Task.Delay(750);
+                }
+            }
+
+            throw new Exception(
+                "QuickBooks no respondió después de dos intentos. " +
+                "Revise la conexión entre el servidor y QuickBooks.",
+                lastError
+            );
+        }
+
         // fechaDesde / fechaHasta en formato "yyyy-MM-dd". Si vienen null/vacíos, no se filtra por fecha.
         public async Task<string> GetSalesReceipts(string? fechaDesde = null, string? fechaHasta = null)
         {
@@ -141,7 +197,10 @@ namespace QBTicketsApi.Services
                 $"&include=enhancedAllCustomFields";
 
             HttpResponseMessage response =
-                await client.GetAsync(url);
+                await GetQuickBooksWithRetryAsync(
+    client,
+    url
+);
 
             string responseText =
                 await response.Content.ReadAsStringAsync();
@@ -1309,7 +1368,11 @@ namespace QBTicketsApi.Services
                 $"?query={query}" +
                 $"&include=enhancedAllCustomFields";
 
-            var response = await client.GetAsync(url);
+            var response =
+    await GetQuickBooksWithRetryAsync(
+        client,
+        url
+    );
             string responseText =
                 await response.Content.ReadAsStringAsync();
 
@@ -1359,7 +1422,10 @@ namespace QBTicketsApi.Services
                 $"?query={query}" +
                 $"&include=enhancedAllCustomFields";
 
-            var response = await client.GetAsync(url);
+            var response = await GetQuickBooksWithRetryAsync(
+    client,
+    url
+);
 
             return await response.Content.ReadAsStringAsync();
         }
@@ -1629,7 +1695,10 @@ namespace QBTicketsApi.Services
                 $"?query={query}" +
                 $"&include=enhancedAllCustomFields";
 
-            var response = await client.GetAsync(url);
+            var response = await GetQuickBooksWithRetryAsync(
+    client,
+    url
+);
             string responseText =
                 await response.Content.ReadAsStringAsync();
 
@@ -2053,7 +2122,10 @@ namespace QBTicketsApi.Services
                 $"&include=enhancedAllCustomFields";
 
             HttpResponseMessage response =
-                await client.GetAsync(url);
+                await GetQuickBooksWithRetryAsync(
+    client,
+    url
+);
 
             string responseText =
                 await response.Content.ReadAsStringAsync();
@@ -2147,7 +2219,10 @@ namespace QBTicketsApi.Services
                     $"&include=enhancedAllCustomFields";
 
                 HttpResponseMessage response =
-                    await client.GetAsync(url);
+                    await GetQuickBooksWithRetryAsync(
+    client,
+    url
+);
 
                 string responseText =
                     await response.Content.ReadAsStringAsync();
@@ -2723,7 +2798,10 @@ namespace QBTicketsApi.Services
                 $"&include=enhancedAllCustomFields";
 
             HttpResponseMessage response =
-                await client.GetAsync(url);
+                await GetQuickBooksWithRetryAsync(
+    client,
+    url
+);
 
             string responseText =
                 await response.Content.ReadAsStringAsync();
@@ -2992,7 +3070,10 @@ namespace QBTicketsApi.Services
                     $"{connection.RealmId}/query?query={query}";
 
                 HttpResponseMessage response =
-                    await client.GetAsync(url);
+                    await GetQuickBooksWithRetryAsync(
+    client,
+    url
+);
 
                 string responseText =
                     await response.Content.ReadAsStringAsync();

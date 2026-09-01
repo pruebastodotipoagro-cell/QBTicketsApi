@@ -72,7 +72,32 @@ builder.Services.AddAuthorization();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
-builder.Services.AddHttpClient();
+
+builder.Services
+    .AddHttpClient(string.Empty, client =>
+    {
+        client.Timeout =
+            TimeSpan.FromSeconds(35);
+
+        client.DefaultRequestVersion =
+            System.Net.HttpVersion.Version11;
+
+        client.DefaultVersionPolicy =
+    System.Net.Http.HttpVersionPolicy.RequestVersionOrLower;
+    })
+    .ConfigurePrimaryHttpMessageHandler(
+        () => new SocketsHttpHandler
+        {
+            ConnectTimeout =
+                TimeSpan.FromSeconds(10),
+
+            PooledConnectionLifetime =
+                TimeSpan.FromMinutes(2),
+
+            PooledConnectionIdleTimeout =
+                TimeSpan.FromSeconds(20)
+        }
+    );
 builder.Services.AddMemoryCache();
 
 builder.Services.AddScoped<QuickBooksService>();
