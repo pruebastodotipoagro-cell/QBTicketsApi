@@ -83,7 +83,7 @@ builder.Services
             System.Net.HttpVersion.Version11;
 
         client.DefaultVersionPolicy =
-    System.Net.Http.HttpVersionPolicy.RequestVersionOrLower;
+            System.Net.Http.HttpVersionPolicy.RequestVersionOrLower;
     })
     .ConfigurePrimaryHttpMessageHandler(
         () => new SocketsHttpHandler
@@ -92,10 +92,65 @@ builder.Services
                 TimeSpan.FromSeconds(10),
 
             PooledConnectionLifetime =
-                TimeSpan.FromMinutes(2),
+                TimeSpan.FromMinutes(1),
 
             PooledConnectionIdleTimeout =
-                TimeSpan.FromSeconds(20)
+                TimeSpan.FromSeconds(15),
+
+            ConnectCallback =
+                async (context, cancellationToken) =>
+                {
+                    var addresses =
+                        await System.Net.Dns
+                            .GetHostAddressesAsync(
+                                context.DnsEndPoint.Host,
+                                cancellationToken
+                            );
+
+                    var ipv4 =
+                        addresses.FirstOrDefault(
+                            x =>
+                                x.AddressFamily ==
+                                System.Net.Sockets
+                                    .AddressFamily.InterNetwork
+                        );
+
+                    if (ipv4 == null)
+                    {
+                        throw new Exception(
+                            "No se encontró una dirección IPv4 para " +
+                            context.DnsEndPoint.Host
+                        );
+                    }
+
+                    var socket =
+                        new System.Net.Sockets.Socket(
+                            System.Net.Sockets.AddressFamily.InterNetwork,
+                            System.Net.Sockets.SocketType.Stream,
+                            System.Net.Sockets.ProtocolType.Tcp
+                        );
+
+                    try
+                    {
+                        await socket.ConnectAsync(
+                            new System.Net.IPEndPoint(
+                                ipv4,
+                                context.DnsEndPoint.Port
+                            ),
+                            cancellationToken
+                        );
+
+                        return new System.Net.Sockets.NetworkStream(
+                            socket,
+                            ownsSocket: true
+                        );
+                    }
+                    catch
+                    {
+                        socket.Dispose();
+                        throw;
+                    }
+                }
         }
     );
 builder.Services.AddMemoryCache();
