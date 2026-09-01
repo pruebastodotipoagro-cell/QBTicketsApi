@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using QBTicketsApi.Database;
 using System.Diagnostics;
 using System.Net.Http.Headers;
+using System.Text.Json;
 
 namespace QBTicketsApi.Controllers
 {
@@ -296,6 +297,11 @@ namespace QBTicketsApi.Controllers
             });
         }
 
+        /// <summary>
+        /// ////
+        /// </summary>
+        /// <returns></returns>
+
         [HttpPost("refresh-token")]
         public async Task<IActionResult> RefreshToken()
         {
@@ -312,16 +318,16 @@ namespace QBTicketsApi.Controllers
                 });
             }
 
+            IConfiguration config =
+                HttpContext.RequestServices
+                    .GetRequiredService<IConfiguration>();
+
             string clientId =
-                (HttpContext.RequestServices
-                    .GetRequiredService<IConfiguration>()
-                    ["QuickBooks:ClientId"] ?? "")
+                (config["QuickBooks:ClientId"] ?? "")
                     .Trim();
 
             string clientSecret =
-                (HttpContext.RequestServices
-                    .GetRequiredService<IConfiguration>()
-                    ["QuickBooks:ClientSecret"] ?? "")
+                (config["QuickBooks:ClientSecret"] ?? "")
                     .Trim();
 
             if (string.IsNullOrWhiteSpace(clientId) ||
@@ -369,7 +375,7 @@ namespace QBTicketsApi.Controllers
 
             try
             {
-                using var response =
+                using HttpResponseMessage response =
                     await client.PostAsync(
                         "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer",
                         new FormUrlEncodedContent(form)
@@ -379,25 +385,89 @@ namespace QBTicketsApi.Controllers
                     await response.Content
                         .ReadAsStringAsync();
 
+                if (!response.IsSuccessStatusCode)
+                {
+                    return Ok(new
+                    {
+                        success = false,
+                        httpStatus =
+                            (int)response.StatusCode,
+                        status =
+                            response.StatusCode.ToString(),
+                        message =
+                            "QuickBooks rechazó la renovación del token."
+                    });
+                }
+
+                using JsonDocument document =
+                    JsonDocument.Parse(json);
+
+                JsonElement root =
+                    document.RootElement;
+
+                string accessToken =
+                    root.GetProperty(
+                        "access_token"
+                    ).GetString() ?? "";
+
+                string refreshToken =
+                    root.GetProperty(
+                        "refresh_token"
+                    ).GetString() ?? "";
+
+                int expiresIn =
+                    root.GetProperty(
+                        "expires_in"
+                    ).GetInt32();
+
+                int refreshExpiresIn =
+                    root.TryGetProperty(
+                        "x_refresh_token_expires_in",
+                        out JsonElement refreshExpiration)
+                        ? refreshExpiration.GetInt32()
+                        : 8726400;
+
+                if (string.IsNullOrWhiteSpace(accessToken) ||
+                    string.IsNullOrWhiteSpace(refreshToken))
+                {
+                    return Ok(new
+                    {
+                        success = false,
+                        message =
+                            "QuickBooks respondió, pero no devolvió los tokens esperados."
+                    });
+                }
+
+                connection.AccessToken =
+                    accessToken;
+
+                connection.RefreshToken =
+                    refreshToken;
+
+                connection.AccessTokenExpiresAt =
+                    DateTime.UtcNow
+                        .AddSeconds(expiresIn);
+
+                connection.RefreshTokenExpiresAt =
+                    DateTime.UtcNow
+                        .AddSeconds(refreshExpiresIn);
+
+                connection.UpdatedAt =
+                    DateTime.UtcNow;
+
+                await _db.SaveChangesAsync();
+
                 return Ok(new
                 {
-                    success =
-                        response.IsSuccessStatusCode,
-
-                    httpStatus =
-                        (int)response.StatusCode,
-
-                    status =
-                        response.StatusCode.ToString(),
-
-                    response =
-                        json.Substring(
-                            0,
-                            Math.Min(
-                                json.Length,
-                                500
-                            )
-                        )
+                    success = true,
+                    httpStatus = 200,
+                    status = "OK",
+                    message =
+                        "Los nuevos tokens de QuickBooks fueron guardados correctamente.",
+                    accessTokenExpiresAt =
+                        connection.AccessTokenExpiresAt,
+                    refreshTokenExpiresAt =
+                        connection.RefreshTokenExpiresAt
                 });
             }
             catch (Exception ex)
