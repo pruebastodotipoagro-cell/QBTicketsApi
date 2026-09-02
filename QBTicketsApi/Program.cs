@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
 using QBTicketsApi.Database;
 using QBTicketsApi.Services;
 using QuestPDF.Infrastructure;
@@ -71,7 +72,35 @@ builder.Services
 builder.Services.AddAuthorization();
 
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+
+builder.Services.AddEndpointsApiExplorer();
+
+builder.Services.AddSwaggerGen(options =>
+{
+    options.AddSecurityDefinition(
+        "Bearer",
+        new OpenApiSecurityScheme
+        {
+            Name = "Authorization",
+            Type = SecuritySchemeType.Http,
+            Scheme = "bearer",
+            BearerFormat = "JWT",
+            In = ParameterLocation.Header,
+            Description =
+                "Ingrese el token JWT obtenido en /api/auth/login"
+        }
+    );
+
+    options.AddSecurityRequirement(document =>
+        new OpenApiSecurityRequirement
+        {
+            [new OpenApiSecuritySchemeReference(
+                "Bearer",
+                document
+            )] = []
+        }
+    );
+});
 
 builder.Services
     .AddHttpClient(string.Empty, client =>
@@ -157,9 +186,9 @@ builder.Services.AddMemoryCache();
 
 builder.Services.AddScoped<QuickBooksService>();
 
-// builder.Services.AddHostedService<
-//     QuickBooksTokenRefreshWorker
-// );
+builder.Services.AddHostedService<
+   QuickBooksTokenRefreshWorker
+>();
 
 QuestPDF.Settings.License =
     LicenseType.Community;
@@ -185,7 +214,7 @@ var app = builder.Build();
 app.UseSwagger();
 app.UseSwaggerUI();
 
-app.UseHttpsRedirection();
+//app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseAuthorization();
