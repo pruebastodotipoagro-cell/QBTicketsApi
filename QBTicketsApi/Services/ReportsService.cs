@@ -32,8 +32,11 @@ namespace QBTicketsApi.Services
         private static MemoryCacheEntryOptions ReportCache()
         {
             return new MemoryCacheEntryOptions()
+                .SetSlidingExpiration(
+                    TimeSpan.FromMinutes(2)
+                )
                 .SetAbsoluteExpiration(
-                    TimeSpan.FromSeconds(20)
+                    TimeSpan.FromMinutes(10)
                 );
         }
 
