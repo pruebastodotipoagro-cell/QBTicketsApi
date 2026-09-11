@@ -45,5 +45,40 @@ namespace QBTicketsApi.Controllers
                 );
             }
         }
+
+
+        [HttpGet("estimates-test")]
+        public async Task<IActionResult>
+    TestEstimates()
+        {
+            try
+            {
+                string json =
+                    await _quickBooksService
+                        .GetEstimatesTestAsync();
+
+                return Content(
+                    json,
+                    "application/json"
+                );
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(
+                    new
+                    {
+                        success = false,
+                        error = ex.Message
+                    }
+                );
+            }
+        }
+
+
     }
+
+
+
 }
+
+
