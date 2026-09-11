@@ -3250,7 +3250,88 @@ namespace QBTicketsApi.Services
             return result;
         }
 
+        public async Task<string> GetSalesOrdersTestAsync()
+        {
+            QuickBooksConnection? connection =
+                await _db.QuickBooksConnections
+                    .FirstOrDefaultAsync();
 
+            if (connection == null)
+            {
+                throw new Exception(
+                    "No hay conexión con QuickBooks."
+                );
+            }
+
+            if (connection.AccessTokenExpiresAt <=
+                DateTime.UtcNow.AddMinutes(5))
+            {
+                await RefreshToken();
+
+                connection =
+                    await _db.QuickBooksConnections
+                        .FirstOrDefaultAsync();
+            }
+
+            if (connection == null)
+            {
+                throw new Exception(
+                    "No se pudo recuperar la conexión con QuickBooks."
+                );
+            }
+
+            HttpClient client =
+                _httpClientFactory.CreateClient();
+
+            client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue(
+                    "Bearer",
+                    connection.AccessToken
+                );
+
+            client.DefaultRequestHeaders.Accept.Clear();
+
+            client.DefaultRequestHeaders.Accept.Add(
+                new MediaTypeWithQualityHeaderValue(
+                    "application/json"
+                )
+            );
+
+            string queryText =
+                "SELECT * FROM SalesOrder MAXRESULTS 20";
+
+            string query =
+                Uri.EscapeDataString(
+                    queryText
+                );
+
+            string url =
+                $"https://quickbooks.api.intuit.com/v3/company/" +
+                $"{connection.RealmId}/query" +
+                $"?query={query}";
+
+            HttpResponseMessage response =
+                await GetQuickBooksWithRetryAsync(
+                    client,
+                    url
+                );
+
+            string responseText =
+                await response.Content
+                    .ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new Exception(
+                    "Prueba SalesOrder QuickBooks falló.\n" +
+                    $"HTTP {(int)response.StatusCode} " +
+                    $"{response.StatusCode}\n" +
+                    responseText
+                );
+            }
+
+            return responseText;
+        }
 
         private class QuickBooksTokenResponse
         {
