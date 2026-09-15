@@ -73,8 +73,6 @@ builder.Services.AddAuthorization();
 
 builder.Services.AddEndpointsApiExplorer();
 
-builder.Services.AddEndpointsApiExplorer();
-
 builder.Services.AddSwaggerGen(options =>
 {
     options.AddSecurityDefinition(
@@ -182,12 +180,13 @@ builder.Services
                 }
         }
     );
+
 builder.Services.AddMemoryCache();
 
 builder.Services.AddScoped<QuickBooksService>();
 
 builder.Services.AddHostedService<
-   QuickBooksTokenRefreshWorker
+    QuickBooksTokenRefreshWorker
 >();
 
 QuestPDF.Settings.License =
@@ -200,10 +199,12 @@ builder.Services.AddScoped<MegaprintService>();
 builder.Services.AddScoped<FelXmlBuilderService>();
 builder.Services.AddScoped<ReportsService>();
 builder.Services.AddScoped<CashMovementService>();
+
 builder.Services
     .AddScoped<
         FelCancellationXmlBuilderService
     >();
+
 builder.Services
     .AddScoped<
         FelCancellationService
@@ -214,17 +215,11 @@ var app = builder.Build();
 app.UseSwagger();
 app.UseSwaggerUI();
 
-//app.UseHttpsRedirection();
+// app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
-
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.Migrate();
-}
 
 app.Run();
